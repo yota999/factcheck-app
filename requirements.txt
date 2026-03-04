@@ -1,0 +1,6 @@
+crewai[tools,google-genai]>=0.80.0
+python-dotenv>=1.0.0
+duckduckgo-search>=6.0.0
+langchain-community>=0.3.0
+streamlit>=1.40.0
+litellm>=1.0.0

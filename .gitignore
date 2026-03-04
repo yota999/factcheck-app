@@ -1,0 +1,17 @@
+# APIキー・秘密情報（絶対にGitHubに上げない）
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+
+# 一時ファイル
+result.txt
+*.log
+output/
+
+# CrewAI
+.crewai/
