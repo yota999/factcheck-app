@@ -48,7 +48,7 @@ class FactCheckCrew:
 
         # 主力：Claude Sonnet（高品質）
         self.llm_claude = LLM(
-            model="anthropic/claude-sonnet-4-5",
+            model="anthropic/claude-sonnet-4-6",
             api_key=anthropic_key,
             temperature=0.3,
         )
