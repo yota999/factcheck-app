@@ -185,6 +185,30 @@ elif step == 1:
             placeholder="クリックして選択...",
         )
 
+        # カスタムテーマの直接入力
+        with st.expander("✏️ リストにないテーマを直接入力して追加"):
+            c1, c2 = st.columns([4, 1])
+            with c1:
+                custom_theme = st.text_input(
+                    "カスタムテーマ",
+                    placeholder="例：更年期後の筋肉量低下を防ぐ方法",
+                    label_visibility="collapsed",
+                    key="sg_custom_theme_input",
+                )
+            with c2:
+                add_disabled = not custom_theme.strip() or len(selected) >= 3
+                if st.button("＋追加", key="sg_add_theme", disabled=add_disabled):
+                    new_theme = custom_theme.strip()
+                    if new_theme not in st.session_state.sg_themes:
+                        st.session_state.sg_themes.append(new_theme)
+                    new_sel = list(selected)
+                    if new_theme not in new_sel:
+                        new_sel.append(new_theme)
+                    st.session_state.sg_selected_themes = new_sel
+                    st.rerun()
+            if len(selected) >= 3:
+                st.caption("（3個選択済みのため追加できません）")
+
         col_back, col_next = st.columns([1, 3])
         with col_back:
             if st.button("← 戻る"):
@@ -242,6 +266,30 @@ elif step == 2:
             max_selections=3,
             placeholder="クリックして選択...",
         )
+
+        # カスタムアイデアの直接入力
+        with st.expander("✏️ リストにないアイデアを直接入力して追加"):
+            c1, c2 = st.columns([4, 1])
+            with c1:
+                custom_idea = st.text_input(
+                    "カスタムアイデア",
+                    placeholder="例：夫に言われた一言で決意した体験談",
+                    label_visibility="collapsed",
+                    key="sg_custom_idea_input",
+                )
+            with c2:
+                add_disabled = not custom_idea.strip() or len(selected_ideas) >= 3
+                if st.button("＋追加", key="sg_add_idea", disabled=add_disabled):
+                    new_idea = custom_idea.strip()
+                    if new_idea not in st.session_state.sg_ideas:
+                        st.session_state.sg_ideas.append(new_idea)
+                    new_sel = list(selected_ideas)
+                    if new_idea not in new_sel:
+                        new_sel.append(new_idea)
+                    st.session_state.sg_selected_ideas = new_sel
+                    st.rerun()
+            if len(selected_ideas) >= 3:
+                st.caption("（3個選択済みのため追加できません）")
 
         col_back, col_next = st.columns([1, 3])
         with col_back:
