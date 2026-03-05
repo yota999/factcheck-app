@@ -15,3 +15,8 @@ output/
 
 # CrewAI
 .crewai/
+
+# 台本データ（GitHubに上げない）
+memory/good/
+memory/bad/
+memory/history.json
