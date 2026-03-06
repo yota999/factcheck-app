@@ -6,67 +6,125 @@ load_dotenv(override=True)
 # Streamlit Community Cloud の Secrets にも対応
 try:
     import streamlit as st
-    for key in ["ANTHROPIC_API_KEY", "SERPER_API_KEY"]:
+    for key in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY",
+                "XAI_API_KEY", "SERPER_API_KEY"]:
         if key in st.secrets and not os.getenv(key):
             os.environ[key] = st.secrets[key]
 except Exception:
     pass
 
 
-# ── LLM呼び出し（LiteLLM経由でClaude Sonnet 4.6を使用） ──────────────
-def _call_llm(prompt: str, temperature: float = 0.7, max_tokens: int = 8000) -> str:
-    """Claude Sonnet 4.6にプロンプトを送って結果を返す"""
+# ── LLM呼び出し（モデルを指定して切り替え可能） ──────────────────────
+def _call_llm(prompt: str, model: str = "anthropic/claude-sonnet-4-6",
+              temperature: float = 0.7, max_tokens: int = 8000) -> str:
     import litellm
-    response = litellm.completion(
-        model="anthropic/claude-sonnet-4-6",
+    # xAI の Grok は api_base が必要
+    kwargs = dict(
+        model=model,
         messages=[{"role": "user", "content": prompt}],
         temperature=temperature,
         max_tokens=max_tokens,
     )
+    if model.startswith("xai/"):
+        kwargs["api_base"] = "https://api.x.ai/v1"
+        kwargs["api_key"] = os.getenv("XAI_API_KEY", "")
+    response = litellm.completion(**kwargs)
     return response.choices[0].message.content
 
 
-# ── Serperでトレンドを検索 ─────────────────────────────────────────────
-def get_trends(keyword: str) -> list:
-    """Serper APIを直接呼んでトレンド情報を取得する"""
+# ── Serper: 通常検索（最新記事） ────────────────────────────────────
+def get_trends(query: str) -> list:
     serper_key = os.getenv("SERPER_API_KEY", "")
-    if not serper_key or serper_key == "your_serper_api_key_here":
+    if not serper_key:
         return []
     try:
         import requests
         resp = requests.post(
             "https://google.serper.dev/search",
-            json={"q": keyword, "gl": "jp", "hl": "ja", "num": 5},
+            json={"q": query, "gl": "jp", "hl": "ja", "num": 5},
             headers={"X-API-KEY": serper_key, "Content-Type": "application/json"},
             timeout=10,
         )
         if resp.status_code == 200:
-            data = resp.json()
-            snippets = []
-            for item in data.get("organic", [])[:5]:
-                title = item.get("title", "")
-                snippet = item.get("snippet", "")
-                if snippet:
-                    snippets.append(f"・{title}：{snippet}")
-            return snippets
+            return [
+                f"・{item.get('title', '')}：{item.get('snippet', '')}"
+                for item in resp.json().get("organic", [])[:5]
+                if item.get("snippet")
+            ]
     except Exception:
         pass
     return []
 
 
-# ── ペルソナ定義 ───────────────────────────────────────────────────────
+# ── Serper: 動画検索（YouTubeトレンド） ─────────────────────────────
+def get_video_trends(query: str) -> list:
+    serper_key = os.getenv("SERPER_API_KEY", "")
+    if not serper_key:
+        return []
+    try:
+        import requests
+        resp = requests.post(
+            "https://google.serper.dev/videos",
+            json={"q": query, "gl": "jp", "hl": "ja", "num": 5},
+            headers={"X-API-KEY": serper_key, "Content-Type": "application/json"},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            return [
+                f"・{item.get('title', '')}（{item.get('channel', '')}）"
+                for item in resp.json().get("videos", [])[:5]
+                if item.get("title")
+            ]
+    except Exception:
+        pass
+    return []
+
+
+# ── YouTube Data API v3: 人気動画検索 ───────────────────────────────
+def get_youtube_trending(query: str) -> list:
+    api_key = os.getenv("GOOGLE_API_KEY", "")
+    if not api_key:
+        return []
+    try:
+        import requests
+        resp = requests.get(
+            "https://www.googleapis.com/youtube/v3/search",
+            params={
+                "key": api_key,
+                "q": query,
+                "part": "snippet",
+                "type": "video",
+                "regionCode": "JP",
+                "relevanceLanguage": "ja",
+                "order": "viewCount",
+                "maxResults": 5,
+            },
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            return [
+                f"・【YouTube人気】{item['snippet']['title']}（{item['snippet']['channelTitle']}）"
+                for item in resp.json().get("items", [])
+                if item.get("snippet")
+            ]
+    except Exception:
+        pass
+    return []
+
+
+# ── ペルソナ定義 ─────────────────────────────────────────────────────
 YOUTUBE_PERSONA = """あなたは、30代〜50代女性から絶大な信頼を得るダイエットトレーナー「町田」として台本を書いてください。
 【プロフィール】トレーナー歴14年・指導人数6200人以上・30〜50代女性専門
 【口調】優しく寄り添うパートナー口調（デス・マス調）。専門用語は避け、主婦がイメージしやすいたとえ話で説明。
 【姿勢】「この人なら信じられる」「今すぐやってみたい」と思わせるレベルで、感情直撃・共感最大化・科学的根拠・即実践可能な解決策をバランスよく入れる。"""
 
 YOUTUBE_STRUCTURE = """【構成（6ブロック厳守）】
-1. オープニング：挨拶とテーマ発表、視聴者の悩みに深く寄り添う
-2. 実績・事例紹介：ターゲットのリアルな感情と成功体験を具体的に語る
-3. 世間の常識の論破：データや極端なたとえ話を使って徹底的に否定する
-4. 具体的な解決策3つ：科学的テーマで全体を串刺しにして解説、ハードルを下げるフレーズを入れる
-5. 最後の落とし穴：NG行動を念押し、前半の科学的テーマと絡めて伏線回収
-6. エンディング：まとめ＋熱いメッセージ＋LINE特典誘導＋チャンネル登録のお願い
+1. 【オープニング】視聴者の痛みを直撃する問いかけから始める。最初の30秒で「これは自分のことだ」と思わせる。挨拶とテーマ発表、悩みへの共感。
+2. 【実績・事例紹介】ターゲットのリアルな感情と成功体験を具体的に語る
+3. 【世間の常識の論破】データや極端なたとえ話を使って徹底的に否定する
+4. 【具体的な解決策3つ】科学的テーマで全体を串刺しにして解説、ハードルを下げるフレーズを入れる
+5. 【最後の落とし穴】NG行動を念押し、前半の科学的テーマと絡めて伏線回収
+6. 【エンディング】まとめ＋熱いメッセージ＋LINE特典誘導＋チャンネル登録のお願い
 
 【文字数】4500〜5000文字（セリフ＝台本本文のみで計算）"""
 
@@ -83,35 +141,61 @@ REEL_STRUCTURE = """【構成（6ブロック厳守）】
 5. 真の解決策（What）：「本気で〜になりたいなら」と問いかけ、確実な家トレへの切り替えを提案
 6. アクション（結び）：「今から一緒に家トレを3つ頑張っていきましょう！」（この文言で固定）
 
-【文字数】700〜800文字（セリフのみ。最後に実際の文字数を括弧で記載する）"""
+【文字数】700〜800文字ちょうど（セリフのみ。最後に実際の文字数を括弧で記載する）"""
+
+# テーマ自動生成用のニッチキーワード（30〜50代女性向けダイエット・健康）
+AUTO_SEARCH_QUERIES = [
+    "30代 40代 50代 女性 ダイエット 最新",
+    "更年期 ダイエット 筋トレ トレンド",
+    "女性 健康 痩せる 話題",
+]
 
 
-# ── 各生成関数 ────────────────────────────────────────────────────────
+# ── テーマ自動生成（キーワード入力なし） ────────────────────────────
 def generate_themes(
     script_type: str,
-    keyword: str,
     used_themes: list,
+    rejected_themes: list,
     trends: list,
+    video_trends: list,
+    youtube_trends: list,
     angle_name: str,
+    model: str = "anthropic/claude-sonnet-4-6",
 ) -> list:
-    """テーマ候補を20個生成する"""
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
     char_range = "4500〜5000文字のYouTube台本" if script_type == "youtube" else "700〜800文字のリール動画台本"
 
-    used_str = "\n".join(f"・{t}" for t in used_themes[-20:]) if used_themes else "（まだなし）"
-    trend_str = "\n".join(trends) if trends else "（取得できませんでした）"
+    used_str = "\n".join(f"・{t}" for t in used_themes[-20:]) or "（まだなし）"
+    rejected_str = "\n".join(f"・{t}" for t in rejected_themes[-30:]) or "（なし）"
+    trend_str = "\n".join(trends) or "（取得できませんでした）"
+    video_str = "\n".join(video_trends) or "（取得できませんでした）"
+    youtube_str = "\n".join(youtube_trends) or "（取得できませんでした）"
 
     prompt = f"""{persona}
 
-キーワード「{keyword}」に関連する{char_range}のテーマを20個提案してください。
+30〜50代女性向けダイエット・健康系の{char_range}テーマを20個提案してください。
 
 【アングル（切り口）】「{angle_name}」を軸に展開すること
 
-【使用済みテーマ（これと被らないこと・似たものも避ける）】
+【使用済みテーマ（被らないこと・似たものも避ける）】
 {used_str}
 
-【最新トレンド情報（参考にして新鮮なテーマを作る）】
+【NGテーマ（絶対に提案しないこと）】
+{rejected_str}
+
+【Google最新トレンド記事（参考）】
 {trend_str}
+
+【YouTube人気動画トレンド（参考）】
+{video_str}
+
+【YouTube Data API 人気動画（参考）】
+{youtube_str}
+
+【必須ルール】
+・20個のうち必ず5個以上は「意外性・逆説・最新研究・珍しい切り口」のテーマにすること
+・残り15個はオーソドックスだが新鮮さのあるテーマにすること
+・NGテーマと似たものは絶対に出さないこと
 
 【出力形式】
 番号付きリストでタイトルのみを20個。説明は不要。
@@ -120,13 +204,12 @@ def generate_themes(
 ...
 20. テーマタイトル"""
 
-    response = _call_llm(prompt, temperature=0.8, max_tokens=2000)
+    response = _call_llm(prompt, model=model, temperature=0.85, max_tokens=2000)
     themes = []
     for line in response.split("\n"):
         line = line.strip()
         if not line:
             continue
-        # "1. テーマ" 形式から抽出
         if len(line) > 2 and line[0].isdigit() and ". " in line:
             themes.append(line.split(". ", 1)[1].strip())
         elif len(line) > 2 and line[0].isdigit() and "．" in line:
@@ -139,13 +222,15 @@ def generate_ideas(
     selected_themes: list,
     angle_name: str,
     good_elements: list,
+    rejected_ideas: list,
+    model: str = "anthropic/claude-sonnet-4-6",
 ) -> list:
-    """コンテンツアイデアを20個生成する"""
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
     structure = YOUTUBE_STRUCTURE if script_type == "youtube" else REEL_STRUCTURE
 
     themes_str = " / ".join(selected_themes)
-    good_str = "\n".join(f"・{e}" for e in good_elements) if good_elements else "（まだデータなし）"
+    good_str = "\n".join(f"・{e}" for e in good_elements) or "（まだデータなし）"
+    rejected_str = "\n".join(f"・{i}" for i in rejected_ideas[-30:]) or "（なし）"
 
     prompt = f"""{persona}
 
@@ -160,6 +245,12 @@ def generate_ideas(
 【過去に好評だった要素（積極的に参考にする）】
 {good_str}
 
+【NGアイデア（絶対に使わないこと）】
+{rejected_str}
+
+【必須ルール】
+・20個のうち5個以上は「意外性・最新研究・珍しいデータ・驚きの事実」を含むアイデアにすること
+
 【出力形式】
 番号付きリストで1〜2行のアイデアを20個。
 1. アイデア内容
@@ -167,7 +258,7 @@ def generate_ideas(
 ...
 20. アイデア内容"""
 
-    response = _call_llm(prompt, temperature=0.7, max_tokens=3000)
+    response = _call_llm(prompt, model=model, temperature=0.75, max_tokens=3000)
     ideas = []
     for line in response.split("\n"):
         line = line.strip()
@@ -187,19 +278,18 @@ def generate_draft(
     good_elements: list,
     bad_patterns: list,
     ref_scripts: list,
+    model: str = "anthropic/claude-sonnet-4-6",
 ) -> str:
-    """台本ドラフトを生成する"""
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
     structure = YOUTUBE_STRUCTURE if script_type == "youtube" else REEL_STRUCTURE
 
     themes_str = " / ".join(selected_themes)
     ideas_str = "\n".join(f"・{i}" for i in selected_ideas)
-    good_str = "\n".join(f"・{e}" for e in good_elements) if good_elements else "（データなし）"
-    bad_str = "\n".join(f"・{p}" for p in bad_patterns) if bad_patterns else "（データなし）"
+    good_str = "\n".join(f"・{e}" for e in good_elements) or "（データなし）"
+    bad_str = "\n".join(f"・{p}" for p in bad_patterns) or "（データなし）"
 
     ref_str = ""
     for i, ref in enumerate(ref_scripts, 1):
-        # 参考台本は冒頭800文字だけ渡す（トークン節約）
         ref_str += f"\n【参考台本{i}（冒頭抜粋）】\n{ref[:800]}\n"
 
     char_min, char_max = (4500, 5000) if script_type == "youtube" else (700, 800)
@@ -229,15 +319,13 @@ def generate_draft(
 ・改行を適切に入れて読みやすくする
 ・セリフのみ（ト書き・カッコ書きの指示は最小限に）"""
 
-    return _call_llm(prompt, temperature=0.65, max_tokens=max_tok)
+    return _call_llm(prompt, model=model, temperature=0.65, max_tokens=max_tok)
 
 
-def generate_titles(draft: str, script_type: str) -> str:
-    """タイトル候補5本 + サムネイルテキスト案3本を生成する"""
+def generate_titles(draft: str, script_type: str,
+                    model: str = "anthropic/claude-sonnet-4-6") -> str:
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
     media = "YouTube動画" if script_type == "youtube" else "リール動画"
-
-    # 台本の冒頭1200文字を渡す
     draft_excerpt = draft[:1200]
 
     prompt = f"""{persona}
@@ -261,4 +349,23 @@ def generate_titles(draft: str, script_type: str) -> str:
 2. キャッチコピー
 3. キャッチコピー"""
 
-    return _call_llm(prompt, temperature=0.8, max_tokens=1000)
+    return _call_llm(prompt, model=model, temperature=0.8, max_tokens=1000)
+
+
+# ── 全情報を並行取得してテーマ生成（UIから呼ぶ） ─────────────────────
+def fetch_all_trends() -> tuple:
+    """Serper通常検索・動画検索・YouTube Data APIを並行実行"""
+    import concurrent.futures
+    query_article = AUTO_SEARCH_QUERIES[0]
+    query_video = AUTO_SEARCH_QUERIES[1]
+    query_yt = AUTO_SEARCH_QUERIES[2]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        f_trend = executor.submit(get_trends, query_article)
+        f_video = executor.submit(get_video_trends, query_video)
+        f_youtube = executor.submit(get_youtube_trending, query_yt)
+        trends = f_trend.result()
+        video_trends = f_video.result()
+        youtube_trends = f_youtube.result()
+
+    return trends, video_trends, youtube_trends
