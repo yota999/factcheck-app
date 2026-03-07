@@ -110,19 +110,27 @@ def get_rejected_ideas() -> list:
     return _ensure_keys(_load_history()).get("rejected_ideas", [])
 
 
-def get_reference_scripts(script_type: str, n: int = 2) -> list:
-    """goodフォルダから同タイプの台本をn件取得（参考用）"""
+def get_reference_scripts(script_type: str, n: int = 3) -> list:
+    """goodフォルダから同タイプの台本をランダムn件取得（参考用・毎回違うものが選ばれる）"""
+    import random
     _ensure_dirs()
-    files = sorted(
-        GOOD_DIR.glob(f"{script_type}_*.txt"),
-        key=lambda f: f.stat().st_mtime,
-        reverse=True,
-    )
-    results = []
-    for f in files[:n]:
-        with open(f, encoding="utf-8") as fp:
-            results.append(fp.read())
-    return results
+    files = list(GOOD_DIR.glob(f"{script_type}_*.txt"))
+    # 内容が空でないファイルだけ対象にする
+    valid = []
+    for f in files:
+        try:
+            content = f.read_text(encoding="utf-8")
+            body = "\n".join(
+                l for l in content.split("\n")
+                if not l.startswith("#") and l.strip()
+            )
+            if len(body) > 100:
+                valid.append((f, body))
+        except Exception:
+            pass
+    # ランダムにn件選ぶ
+    chosen = random.sample(valid, min(n, len(valid)))
+    return [body for _, body in chosen]
 
 
 def get_stats() -> dict:

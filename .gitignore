@@ -16,7 +16,7 @@ output/
 # CrewAI
 .crewai/
 
-# 台本データ（GitHubに上げない）
-memory/good/
+# 台本データ（ユーザー生成分はGitHubに上げない）
 memory/bad/
 memory/history.json
+# 学習データ（reel_2024*.txt）はコミット対象 → memory/good/ は除外しない
