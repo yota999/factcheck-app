@@ -437,10 +437,10 @@ def generate_section_variants(section_name: str, section_content: str,
 # ── 4モデル並列ファクトチェック ────────────────────────────────────────
 
 FC_MODELS = [
-    ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6", "🟣"),
-    ("gpt-4o",                      "ChatGPT (GPT-4o)",  "🟢"),
-    ("gemini/gemini-1.5-pro",        "Gemini 1.5 Pro",    "🔵"),
-    ("xai/grok-2",                   "Grok 2",            "⚫"),
+    ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6",   "🟣"),
+    ("gpt-4o",                      "ChatGPT (GPT-4o)",    "🟢"),
+    ("gemini/gemini-2.0-flash",     "Gemini 2.0 Flash",    "🔵"),
+    ("xai/grok-3-mini",             "Grok 3 Mini",         "⚫"),
 ]
 
 FC_PROMPT_TEMPLATE = """あなたは優秀なファクトチェッカーです。以下の台本に含まれる事実的な主張を検証してください。

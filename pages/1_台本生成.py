@@ -765,26 +765,50 @@ elif step == 3:
 
 
 # ════════════════════════════════════════════════════════════════════
-# Step 4: 4モデル並列ファクトチェック + タイトル生成 + 評価
+# Step 4: 4モデル並列ファクトチェック + タイトル生成 + 最終調整 + 評価
 # ════════════════════════════════════════════════════════════════════
 elif step == 4:
     draft = st.session_state.sg_edited_draft
     script_type = st.session_state.sg_script_type
     model_id = st.session_state.sg_current_ai[0]
 
-    st.markdown('<div class="section-header">Step 5 ／ ファクトチェック・タイトル生成・評価</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Step 5 ／ ファクトチェック・タイトル生成・最終調整・評価</div>', unsafe_allow_html=True)
 
-    # ── ファクトチェック未実施 ──────────────────────────────────────
+    # ────────────────────────────────────────────────────────────────
+    # A) ファクトチェック未実施
+    # ────────────────────────────────────────────────────────────────
     if not st.session_state.sg_fc_results:
-        st.info("4つのAI（Claude・ChatGPT・Gemini・Grok）が並列でファクトチェックを実施します。完了まで2〜3分かかります。")
+
+        # 台本プレビュー（小さく）
+        char_preview = len(draft)
+        st.markdown(
+            f'<div style="background:#F8FAFF;border:1px solid #C7D2FE;border-radius:10px;'
+            f'padding:14px 16px;margin-bottom:16px;">'
+            f'<span style="font-size:0.8rem;color:#6B7280;">確認する台本 — {char_preview}文字</span></div>',
+            unsafe_allow_html=True,
+        )
+        with st.expander("台本の内容を確認する"):
+            st.text(draft)
+
+        st.markdown("""
+<div style="background:linear-gradient(135deg,#EEF2FF,#F5F3FF);border-radius:12px;
+padding:20px 24px;margin:12px 0 20px;">
+<h4 style="margin:0 0 8px;color:#3730A3;">🔍 4 AI 並列ファクトチェック</h4>
+<p style="margin:0;color:#4B5563;font-size:0.9rem;">
+Claude Sonnet・ChatGPT (GPT-4o)・Gemini 2.0 Flash・Grok 3 Mini が同時並列で<br>
+台本の事実的主張を独立検証します。完了まで約2〜3分かかります。
+</p>
+</div>
+""", unsafe_allow_html=True)
 
         col_back_fc, col_start_fc = st.columns([1, 3])
         with col_back_fc:
-            if st.button("← 戻る"):
+            if st.button("← 戻る", key="fc_back"):
                 st.session_state.sg_step = 3
                 st.rerun()
         with col_start_fc:
-            if st.button("🔍 ファクトチェック＋タイトル生成を開始", type="primary"):
+            if st.button("🚀 ファクトチェック＋タイトル生成を開始", type="primary",
+                         use_container_width=True):
                 result_holder = {}
 
                 def _run_fc():
@@ -808,127 +832,360 @@ elif step == 4:
                 t_fc.start(); t_ti.start()
 
                 prog = st.progress(0)
-                status = st.empty()
+                status_ph = st.empty()
+                ai_status = st.empty()
                 elapsed = 0
+                MODEL_LABELS = ["Claude", "ChatGPT", "Gemini", "Grok"]
                 while t_fc.is_alive() or t_ti.is_alive():
                     elapsed += 1
-                    pct = min(90, elapsed * 3)
+                    pct = min(90, elapsed * 2)
                     prog.progress(pct)
-                    fc_s = "⚙️ 実行中" if t_fc.is_alive() else "✅ 完了"
-                    ti_s = "⚙️ 実行中" if t_ti.is_alive() else "✅ 完了"
-                    status.info(f"ファクトチェック: **{fc_s}** ｜ タイトル生成: **{ti_s}**")
+                    fc_s = "⚙️ 検証中" if t_fc.is_alive() else "✅ 完了"
+                    ti_s = "⚙️ 生成中" if t_ti.is_alive() else "✅ 完了"
+                    status_ph.info(f"ファクトチェック: **{fc_s}** ｜ タイトル生成: **{ti_s}**")
+                    dot = "●" * (elapsed % 4)
+                    ai_status.caption(f"🤖 並列実行中: {' / '.join(MODEL_LABELS)} {dot}")
                     time.sleep(1)
                 t_fc.join(); t_ti.join()
                 prog.progress(100)
-                status.empty()
+                status_ph.empty(); ai_status.empty()
 
                 if "fc_error" in result_holder:
                     st.error(f"ファクトチェックエラー: {result_holder['fc_error']}")
                 else:
                     st.session_state.sg_fc_results = result_holder.get("fc", [])
                     st.session_state.sg_titles = result_holder.get("titles", "")
+                    # 最終セクションビルダー用リセット
+                    st.session_state["sg_final_sections"] = []
                     st.rerun()
 
-    # ── ファクトチェック完了 ─────────────────────────────────────────
+    # ────────────────────────────────────────────────────────────────
+    # B) ファクトチェック完了 → 結果表示 + 最終調整 + 評価
+    # ────────────────────────────────────────────────────────────────
     else:
         _, ai_name = st.session_state.sg_current_ai
-        final_script = st.session_state.sg_edited_draft
         titles = st.session_state.sg_titles
         fc_results = st.session_state.sg_fc_results
 
-        # タイトル候補
+        # ─ タイトル候補カード ────────────────────────────────────────
         if titles:
-            with st.expander("🎯 タイトル候補・サムネイルテキスト案", expanded=True):
-                st.markdown(titles)
+            st.markdown("### 🎯 タイトル候補 ＆ サムネイルテキスト")
+            # タイトルと サムネイルを分けて表示
+            import re as _re
+            title_lines = [l for l in titles.split("\n")
+                           if _re.match(r"^\d+\.", l.strip())]
+            thumb_lines  = [l for l in titles.split("\n")
+                            if _re.match(r"^\d+\.", l.strip()) and l in titles.split("## サムネイル")[1]
+                            ] if "## サムネイル" in titles else []
 
-        # ─ ファクトチェック 4カラム ─
-        st.markdown("### 🔍 ファクトチェック結果（4AI並列）")
+            col_t, col_s = st.columns([3, 2])
+            with col_t:
+                st.markdown(
+                    '<div style="background:#FAFAFA;border:1px solid #E5E7EB;border-radius:10px;'
+                    'padding:16px 18px;">'
+                    '<div style="font-size:0.8rem;color:#6B7280;margin-bottom:10px;font-weight:600;">'
+                    '📋 タイトル候補</div>',
+                    unsafe_allow_html=True,
+                )
+                # タイトル番号付きリスト部分を綺麗に表示
+                in_titles = False
+                for line in titles.split("\n"):
+                    if "タイトル" in line and line.startswith("#"):
+                        in_titles = True; continue
+                    if line.startswith("#"):
+                        in_titles = False
+                    if in_titles and line.strip():
+                        st.markdown(line)
+                st.markdown('</div>', unsafe_allow_html=True)
+            with col_s:
+                st.markdown(
+                    '<div style="background:#FAFAFA;border:1px solid #E5E7EB;border-radius:10px;'
+                    'padding:16px 18px;">'
+                    '<div style="font-size:0.8rem;color:#6B7280;margin-bottom:10px;font-weight:600;">'
+                    '🖼️ サムネイル案</div>',
+                    unsafe_allow_html=True,
+                )
+                in_thumb = False
+                for line in titles.split("\n"):
+                    if "サムネイル" in line and line.startswith("#"):
+                        in_thumb = True; continue
+                    if line.startswith("#"):
+                        in_thumb = False
+                    if in_thumb and line.strip():
+                        st.markdown(
+                            f'<div style="background:#EEF2FF;border-radius:6px;padding:8px 10px;'
+                            f'margin-bottom:6px;font-size:0.88rem;">{line}</div>',
+                            unsafe_allow_html=True,
+                        )
+                st.markdown('</div>', unsafe_allow_html=True)
 
-        MODEL_COLORS = {
-            "Claude Sonnet 4.6": "#7C3AED",
-            "ChatGPT (GPT-4o)":  "#059669",
-            "Gemini 1.5 Pro":    "#1D4ED8",
-            "Grok 2":            "#111827",
+        st.markdown("---")
+
+        # ─ ファクトチェック 4カラム ───────────────────────────────────
+        st.markdown("### 🔬 ファクトチェック結果（4 AI 並列）")
+
+        MODEL_STYLES = {
+            "Claude Sonnet 4.6":  {"color": "#7C3AED", "bg": "#F5F3FF", "icon": "🟣"},
+            "ChatGPT (GPT-4o)":   {"color": "#059669", "bg": "#ECFDF5", "icon": "🟢"},
+            "Gemini 2.0 Flash":   {"color": "#1D4ED8", "bg": "#EFF6FF", "icon": "🔵"},
+            "Grok 3 Mini":        {"color": "#374151", "bg": "#F9FAFB", "icon": "⚫"},
         }
-        VERDICT_ICON = {"✅": "verdict-good", "⚠️": "verdict-warn", "❌": "verdict-bad"}
+        VERDICT_MAP = {
+            "✅": ("概ね正確", "#059669", "#ECFDF5"),
+            "⚠️": ("一部要注意", "#D97706", "#FFFBEB"),
+            "❌": ("問題あり",   "#DC2626", "#FEF2F2"),
+            "❓": ("確認中",     "#6B7280", "#F9FAFB"),
+        }
 
-        fc_cols = st.columns(len(fc_results) if fc_results else 4)
-        for col, res in zip(fc_cols, fc_results):
+        # サマリーバー（4モデルの判定を横一列）
+        smry_cols = st.columns(4)
+        for col_s2, res in zip(smry_cols, fc_results):
             if res is None:
                 continue
-            color = MODEL_COLORS.get(res.get("model_name", ""), "#4F46E5")
-            icon = res.get("icon", "🤖")
+            mname = res.get("model_name", "")
+            style = MODEL_STYLES.get(mname, {"color": "#4F46E5", "bg": "#EEF2FF", "icon": "🤖"})
             verdict = res.get("verdict", "❓")
-            v_cls = VERDICT_ICON.get(verdict, "verdict-unk")
-
-            with col:
+            v_label, v_color, v_bg = VERDICT_MAP.get(verdict, ("確認中", "#6B7280", "#F9FAFB"))
+            with col_s2:
                 st.markdown(
-                    f'<div style="border:1px solid {color}20;border-top:4px solid {color};'
-                    f'border-radius:10px;padding:14px 12px;background:white;">'
-                    f'<div style="font-weight:700;font-size:0.9rem;margin-bottom:6px;">'
-                    f'{icon} {res.get("model_name","")}</div>'
-                    f'<div class="{v_cls}" style="font-size:1.3rem;margin-bottom:8px;">{verdict}</div>'
+                    f'<div style="text-align:center;padding:12px 8px;'
+                    f'background:{style["bg"]};border-radius:10px;'
+                    f'border:2px solid {style["color"]}30;">'
+                    f'<div style="font-size:0.78rem;font-weight:700;color:{style["color"]};'
+                    f'margin-bottom:6px;">{style["icon"]} {mname}</div>'
+                    f'<div style="font-size:1.6rem;">{verdict}</div>'
+                    f'<div style="font-size:0.75rem;color:{v_color};font-weight:600;'
+                    f'background:{v_bg};border-radius:4px;padding:2px 6px;margin-top:4px;'
+                    f'display:inline-block;">{v_label}</div>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
-                if res.get("error"):
-                    st.error(f"エラー: {res['error']}")
-                elif res.get("text"):
-                    with st.expander("詳細を見る"):
-                        # 判定ごとに色分け
-                        for line in res["text"].split("\n"):
-                            if "✅" in line:
-                                st.success(line)
-                            elif "❌" in line:
-                                st.error(line)
-                            elif "⚠️" in line:
-                                st.warning(line)
-                            elif line.startswith("#"):
-                                st.markdown(line)
-                            elif line.strip():
-                                st.write(line)
 
-        st.divider()
+        st.markdown("<br>", unsafe_allow_html=True)
 
-        # ─ 完成台本 ─
-        st.markdown("### 📄 完成台本")
-        char_count = len(final_script)
-        st.caption(f"文字数: **{char_count}文字** ｜ 担当AI: **{ai_name}**")
-        st.text_area("完成台本", value=final_script, height=400, disabled=True, key="sg_final_textarea")
+        # 詳細：各モデルのタブ表示
+        tab_labels = [
+            f'{MODEL_STYLES.get(r.get("model_name",""), {}).get("icon","🤖")} {r.get("model_name","")}'
+            for r in fc_results if r
+        ]
+        if tab_labels:
+            tabs = st.tabs(tab_labels)
+            for tab, res in zip(tabs, [r for r in fc_results if r]):
+                with tab:
+                    if res.get("error"):
+                        st.error(f"APIエラー: {res['error']}")
+                    elif res.get("text"):
+                        text = res["text"]
+                        for line in text.split("\n"):
+                            stripped = line.strip()
+                            if not stripped:
+                                st.markdown("")
+                            elif stripped.startswith("## "):
+                                st.markdown(f"**{stripped[3:]}**")
+                            elif stripped.startswith("### "):
+                                st.markdown(f"---\n**🔹 {stripped[4:]}**")
+                            elif "✅" in stripped:
+                                st.success(stripped)
+                            elif "❌" in stripped:
+                                st.error(stripped)
+                            elif "⚠️" in stripped:
+                                st.warning(stripped)
+                            else:
+                                st.write(stripped)
 
-        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        col_dl1, col_dl2 = st.columns(2)
-        with col_dl1:
-            st.download_button(
-                "📥 台本をダウンロード",
-                data=final_script,
-                file_name=f"script_{script_type}_{ts}.txt",
-                mime="text/plain", use_container_width=True,
-            )
-        with col_dl2:
-            fc_text = "\n\n".join(
-                f"=== {r.get('model_name','')} ===\n{r.get('text','')}"
-                for r in fc_results if r
-            )
-            combined = f"=== 完成台本 ===\n{final_script}\n\n=== タイトル・サムネイル案 ===\n{titles}\n\n=== ファクトチェック結果 ===\n{fc_text}"
-            st.download_button(
-                "📥 全データをダウンロード",
-                data=combined,
-                file_name=f"script_full_{script_type}_{ts}.txt",
-                mime="text/plain", use_container_width=True,
-            )
+        st.markdown("---")
 
-        st.divider()
+        # ─ 完成台本 ＋ セクション別最終調整 ─────────────────────────
+        st.markdown("### 📄 完成台本 ＆ 最終調整")
 
-        # ─ 評価フロー ─
+        tab_view, tab_finalize = st.tabs(["👁️ 完成台本プレビュー", "🧩 セクション別最終微調整"])
+
+        # ── プレビュータブ ──
+        with tab_view:
+            final_script = st.session_state.sg_edited_draft
+            char_count = len(final_script)
+            target_min, target_max = (4500, 5000) if script_type == "youtube" else (700, 800)
+            if char_count < target_min:
+                st.warning(f"📏 **{char_count}文字** ／ 目標 {target_min}〜{target_max}文字")
+            elif char_count > target_max:
+                st.warning(f"📏 **{char_count}文字** ／ 目標オーバー")
+            else:
+                st.success(f"📏 **{char_count}文字** ／ 目標範囲内 ✅")
+
+            st.text_area("完成台本", value=final_script, height=400,
+                         disabled=True, key="sg_final_textarea_view")
+
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            col_dl1, col_dl2 = st.columns(2)
+            with col_dl1:
+                st.download_button(
+                    "📥 台本をダウンロード",
+                    data=final_script,
+                    file_name=f"script_{script_type}_{ts}.txt",
+                    mime="text/plain", use_container_width=True,
+                )
+            with col_dl2:
+                fc_text = "\n\n".join(
+                    f"=== {r.get('model_name','')} ===\n{r.get('text','')}"
+                    for r in fc_results if r
+                )
+                combined = (f"=== 完成台本 ===\n{final_script}\n\n"
+                            f"=== タイトル・サムネイル案 ===\n{titles}\n\n"
+                            f"=== ファクトチェック結果 ===\n{fc_text}")
+                st.download_button(
+                    "📥 全データをダウンロード",
+                    data=combined,
+                    file_name=f"script_full_{script_type}_{ts}.txt",
+                    mime="text/plain", use_container_width=True,
+                )
+
+        # ── セクション別最終微調整タブ ──
+        with tab_finalize:
+            st.caption("ファクトチェックの指摘を踏まえ、セクションごとに5候補から内容を選んで最終台本を組み立てます")
+
+            # sg_final_sections が初期化されているか確認
+            if "sg_final_sections" not in st.session_state:
+                st.session_state["sg_final_sections"] = []
+
+            final_sections = st.session_state["sg_final_sections"]
+            base_script = st.session_state.sg_edited_draft
+
+            if not final_sections:
+                # FC結果のサマリーを文脈として渡す
+                fc_summary = "\n".join(
+                    f"[{r.get('model_name','')}の指摘] "
+                    + (r.get("text","")[:400] if r.get("text") else r.get("error",""))
+                    for r in fc_results if r
+                )[:1200]
+
+                if st.button("🧩 セクション別候補を生成する（ファクトチェック結果を反映）",
+                             type="primary", key="gen_final_sections"):
+                    with st.spinner("AIがセクションを分割して各5候補を生成中..."):
+                        try:
+                            import concurrent.futures
+                            from script_crew import split_script_sections, generate_section_variants
+
+                            raw_secs = split_script_sections(base_script, script_type, model_id)
+
+                            def gen_final(i, sec):
+                                ctx = "\n\n".join(
+                                    raw_secs[j]["content"] for j in range(i)
+                                )
+                                # ファクトチェック指摘を文脈に追加
+                                fc_ctx = f"\n\n【ファクトチェックの指摘（参考）】\n{fc_summary}"
+                                variants = generate_section_variants(
+                                    sec["name"], sec["content"], ctx + fc_ctx,
+                                    script_type, model_id
+                                )
+                                return i, sec["name"], sec["content"], variants
+
+                            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+                                futures = [ex.submit(gen_final, i, s)
+                                           for i, s in enumerate(raw_secs)]
+                                results = sorted(
+                                    [f.result() for f in concurrent.futures.as_completed(futures)],
+                                    key=lambda x: x[0]
+                                )
+
+                            built = []
+                            for i, name, original, variants in results:
+                                built.append({
+                                    "name": name,
+                                    "original": original,
+                                    "variants": variants,
+                                    "selected_idx": 0,
+                                })
+                                if f"sg_final_sec_text_{i}" not in st.session_state:
+                                    st.session_state[f"sg_final_sec_text_{i}"] = (
+                                        variants[0] if variants else original
+                                    )
+                            st.session_state["sg_final_sections"] = built
+                            st.rerun()
+                        except Exception as e:
+                            import traceback
+                            st.error(f"生成エラー: {e}\n{traceback.format_exc()}")
+            else:
+                target_min, target_max = (4500, 5000) if script_type == "youtube" else (700, 800)
+
+                for i, sec in enumerate(final_sections):
+                    st.markdown(
+                        f'<div class="section-header">セクション {i+1}: {sec["name"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    btn_cols = st.columns(5)
+                    for j in range(min(5, len(sec["variants"]))):
+                        with btn_cols[j]:
+                            is_sel = (sec["selected_idx"] == j)
+                            lbl = f"{'✅ ' if is_sel else ''}候補{j+1}"
+                            if st.button(lbl, key=f"sg_fsec_btn_{i}_{j}",
+                                         type="primary" if is_sel else "secondary",
+                                         use_container_width=True):
+                                st.session_state["sg_final_sections"][i]["selected_idx"] = j
+                                st.session_state[f"sg_final_sec_text_{i}"] = sec["variants"][j]
+                                st.rerun()
+
+                    if f"sg_final_sec_text_{i}" not in st.session_state:
+                        st.session_state[f"sg_final_sec_text_{i}"] = (
+                            sec["variants"][sec["selected_idx"]]
+                            if sec["variants"] else sec["original"]
+                        )
+                    st.text_area(
+                        f"候補{sec['selected_idx']+1}の内容（直接編集可）",
+                        key=f"sg_final_sec_text_{i}",
+                        height=120,
+                    )
+
+                assembled_final = "\n\n".join(
+                    st.session_state.get(f"sg_final_sec_text_{i}", s["original"])
+                    for i, s in enumerate(final_sections)
+                )
+                char_assembled = len(assembled_final)
+
+                st.markdown("---")
+                st.markdown("#### 📄 組み上がった最終台本")
+                if char_assembled < target_min:
+                    st.warning(f"📏 **{char_assembled}文字** ／ 目標 {target_min}〜{target_max}文字（あと {target_min - char_assembled}文字）")
+                elif char_assembled > target_max:
+                    st.warning(f"📏 **{char_assembled}文字** ／ {char_assembled - target_max}文字オーバー")
+                else:
+                    st.success(f"📏 **{char_assembled}文字** ／ 目標範囲内 ✅")
+                st.text_area("最終台本", value=assembled_final, height=300,
+                             disabled=True, key="sg_final_assembled")
+
+                col_reset_f, col_fix = st.columns([1, 2])
+                with col_reset_f:
+                    if st.button("🔄 リセット", key="reset_final_sec"):
+                        st.session_state["sg_final_sections"] = []
+                        for ix in range(10):
+                            st.session_state.pop(f"sg_final_sec_text_{ix}", None)
+                        st.rerun()
+                with col_fix:
+                    if st.button("✅ この台本で確定する", type="primary", key="fix_final_script"):
+                        st.session_state.sg_edited_draft = assembled_final
+                        st.session_state["sg_final_sections"] = []
+                        for ix in range(10):
+                            st.session_state.pop(f"sg_final_sec_text_{ix}", None)
+                        st.success("最終台本を確定しました！「完成台本プレビュー」タブで確認・ダウンロードできます")
+                        st.rerun()
+
+        st.markdown("---")
+
+        # ─ 評価フロー ────────────────────────────────────────────────
+        final_script_for_rating = st.session_state.sg_edited_draft
         theme = (st.session_state.sg_selected_themes[0]
                  if st.session_state.sg_selected_themes else "不明")
         angle_key = st.session_state.sg_current_angle[0]
         rating_mode = st.session_state.sg_rating_mode
 
         if rating_mode is None:
-            st.markdown("### ⭐ この台本を評価してください")
-            st.caption("評価結果をAIが分析し、次回の生成に自動反映されます")
+            st.markdown("""
+<div style="background:linear-gradient(135deg,#F0FDF4,#ECFDF5);border-radius:12px;
+padding:20px 24px;border:1px solid #A7F3D0;">
+<h4 style="margin:0 0 6px;color:#065F46;">⭐ この台本を評価してください</h4>
+<p style="margin:0;color:#047857;font-size:0.88rem;">評価結果をAIが分析し、次回の生成に自動反映されます</p>
+</div>
+""", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
             col_good, col_bad = st.columns(2)
             with col_good:
                 if st.button("👍 良い台本だった", type="primary", use_container_width=True):
@@ -944,13 +1201,13 @@ elif step == 4:
                 with st.spinner("🔍 台本の好評ポイントをAIが分析中..."):
                     try:
                         from script_crew import analyze_good_elements
-                        elements = analyze_good_elements(final_script, script_type, model_id)
+                        elements = analyze_good_elements(final_script_for_rating, script_type, model_id)
                     except Exception:
                         elements = []
                     try:
                         from memory_manager import save_script, record_theme_used
-                        from memory_manager import _load_history, _save_history, _type_data, ANGLE_NAMES
-                        save_script(script=final_script, rating="good", theme=theme,
+                        from memory_manager import _load_history, _save_history, _type_data
+                        save_script(script=final_script_for_rating, rating="good", theme=theme,
                                     script_type=script_type, angle=angle_key)
                         record_theme_used(theme=theme, script_type=script_type, angle=angle_key)
                         if elements:
@@ -967,16 +1224,32 @@ elif step == 4:
                     st.session_state.sg_saved = True
                     st.rerun()
             else:
-                st.success("✅ 好評として保存しました！次回の生成に反映されます")
+                st.markdown("""
+<div style="background:#ECFDF5;border:1px solid #6EE7B7;border-radius:10px;padding:16px 18px;">
+<h4 style="color:#065F46;margin:0 0 6px;">✅ 好評として保存しました！</h4>
+<p style="color:#047857;margin:0;font-size:0.88rem;">次回の台本生成に自動反映されます</p>
+</div>
+""", unsafe_allow_html=True)
                 elements = st.session_state.sg_learned_elements
                 if elements and elements != ["（分析データなし）"]:
-                    st.info("**📚 今回学習した好評ポイント（次回から参考にされます）**\n\n" +
-                            "\n".join(f"・{e}" for e in elements))
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.markdown("**📚 今回学習した好評ポイント**")
+                    for el in elements:
+                        st.markdown(
+                            f'<div style="background:#F0FDF4;border-left:3px solid #059669;'
+                            f'padding:8px 12px;border-radius:4px;margin:4px 0;font-size:0.88rem;">'
+                            f'✓ {el}</div>',
+                            unsafe_allow_html=True,
+                        )
 
         elif rating_mode == "bad":
             if not st.session_state.sg_saved:
-                st.markdown("### 改善フィードバック")
-                st.caption("何が問題だったか教えてください。次回の生成に反映されます")
+                st.markdown("""
+<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px 18px;margin-bottom:16px;">
+<h4 style="color:#991B1B;margin:0 0 4px;">💬 改善フィードバック</h4>
+<p style="color:#B91C1C;margin:0;font-size:0.88rem;">何が問題だったか教えてください。次回の生成に反映されます</p>
+</div>
+""", unsafe_allow_html=True)
                 ng_themes = st.multiselect(
                     "🚫 NGにするテーマ", options=st.session_state.sg_selected_themes,
                     default=[], key="sg_bad_ng_themes",
@@ -994,15 +1267,16 @@ elif step == 4:
                     with st.spinner("🔍 AIが改善パターンを分析中..."):
                         try:
                             from script_crew import analyze_bad_pattern
-                            pattern = analyze_bad_pattern(final_script, script_type, bad_note, model_id)
+                            pattern = analyze_bad_pattern(
+                                final_script_for_rating, script_type, bad_note, model_id)
                         except Exception:
                             pattern = bad_note if bad_note else ""
                         try:
                             from memory_manager import (save_script, record_theme_used,
                                 add_rejected_themes, add_rejected_ideas,
                                 _load_history, _save_history, _type_data)
-                            save_script(script=final_script, rating="bad", theme=theme,
-                                        script_type=script_type, angle=angle_key)
+                            save_script(script=final_script_for_rating, rating="bad",
+                                        theme=theme, script_type=script_type, angle=angle_key)
                             record_theme_used(theme=theme, script_type=script_type, angle=angle_key)
                             if ng_themes:
                                 add_rejected_themes(ng_themes, script_type)
@@ -1025,7 +1299,7 @@ elif step == 4:
                 if st.session_state.sg_learned_pattern:
                     st.info(f"**📚 学習した改善パターン：** {st.session_state.sg_learned_pattern}")
 
-        st.divider()
+        st.markdown("---")
         if st.button("🔄 新しい台本を生成する", type="secondary"):
             reset_all()
             st.rerun()
