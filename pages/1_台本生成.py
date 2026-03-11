@@ -28,143 +28,199 @@ st.set_page_config(
 # ─── CSS ──────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* ベースデザイン */
-.main { background: #f0f2f6; }
+/* ═══ ベース ═══ */
+.main { background: linear-gradient(180deg, #F8FAFF 0%, #F0F2F6 100%); }
+section[data-testid="stSidebar"] { background: #FAFBFE; }
 
-/* カード */
-.card {
-    background: white;
-    border-radius: 12px;
-    padding: 20px 24px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-    margin-bottom: 16px;
-}
-.card-blue  { border-left: 4px solid #4F46E5; }
-.card-green { border-left: 4px solid #059669; }
-.card-amber { border-left: 4px solid #D97706; }
-.card-red   { border-left: 4px solid #DC2626; }
-.card-gray  { border-left: 4px solid #9CA3AF; }
-
-/* ページタイトル */
+/* ═══ ページヘッダー ═══ */
 .page-header {
-    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
-    border-radius: 14px;
-    padding: 24px 28px;
+    background: linear-gradient(135deg, #4338CA 0%, #6D28D9 50%, #7C3AED 100%);
+    border-radius: 16px;
+    padding: 28px 32px 24px;
     color: white;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 24px rgba(79,70,229,.18);
+    position: relative;
+    overflow: hidden;
 }
-.page-header h1 { margin: 0; font-size: 1.8rem; color: white; }
-.page-header p  { margin: 4px 0 0; opacity: 0.85; font-size: 0.95rem; }
+.page-header::after {
+    content: '';
+    position: absolute; right: -30px; top: -30px;
+    width: 140px; height: 140px;
+    background: rgba(255,255,255,.08);
+    border-radius: 50%;
+}
+.page-header h1 { margin: 0; font-size: 1.85rem; color: white; letter-spacing: -.02em; }
+.page-header p  { margin: 6px 0 0; opacity: 0.82; font-size: 0.92rem; }
 
-/* ステッププログレス */
+/* ═══ ステッププログレス ═══ */
 .steps-wrap {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    display: flex; align-items: center; justify-content: center;
     background: white;
-    border-radius: 12px;
-    padding: 14px 20px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-    margin-bottom: 20px;
-    gap: 4px;
+    border-radius: 14px;
+    padding: 18px 28px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.05);
+    margin-bottom: 24px;
+    gap: 0;
 }
 .step-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    flex: 1;
-    position: relative;
+    display: flex; flex-direction: column; align-items: center;
+    flex: 1; position: relative; z-index: 1;
 }
 .step-num {
-    width: 28px; height: 28px;
-    border-radius: 50%;
+    width: 34px; height: 34px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.8rem; font-weight: 700;
-    margin-bottom: 4px;
+    font-size: 0.82rem; font-weight: 700;
+    margin-bottom: 6px;
+    transition: all .25s;
 }
-.step-label { font-size: 0.72rem; text-align: center; white-space: nowrap; }
-.step-done  .step-num { background: #059669; color: white; }
-.step-done  .step-label { color: #059669; }
-.step-active .step-num { background: #4F46E5; color: white; box-shadow: 0 0 0 3px #C7D2FE; }
-.step-active .step-label { color: #4F46E5; font-weight: 700; }
-.step-pending .step-num { background: #E5E7EB; color: #9CA3AF; }
-.step-pending .step-label { color: #9CA3AF; }
-.step-connector {
-    height: 2px; background: #E5E7EB; flex: 0 0 20px; margin-bottom: 20px;
-}
-.step-connector.done { background: #059669; }
+.step-label { font-size: 0.74rem; text-align: center; white-space: nowrap; letter-spacing: .01em; }
+.step-done  .step-num   { background: #059669; color: white; box-shadow: 0 2px 8px rgba(5,150,105,.25); }
+.step-done  .step-label { color: #059669; font-weight: 600; }
+.step-active .step-num  { background: #4F46E5; color: white; box-shadow: 0 0 0 4px #C7D2FE, 0 2px 8px rgba(79,70,229,.25); }
+.step-active .step-label{ color: #4F46E5; font-weight: 700; }
+.step-pending .step-num { background: #F3F4F6; color: #9CA3AF; border: 2px solid #E5E7EB; }
+.step-pending .step-label{ color: #9CA3AF; }
+.step-connector { height: 3px; background: #E5E7EB; flex: 0 0 32px; margin-bottom: 22px; border-radius: 2px; }
+.step-connector.done { background: linear-gradient(90deg, #059669, #10B981); }
 
-/* タイプ選択カード */
-.type-card {
-    border: 2px solid #E5E7EB;
-    border-radius: 12px;
-    padding: 20px;
-    cursor: pointer;
-    transition: all 0.15s;
-    text-align: center;
-}
-.type-card.selected { border-color: #4F46E5; background: #EEF2FF; }
-
-/* バリアントカード（セクションビルダー） */
-.variant-card {
-    border: 2px solid #E5E7EB;
-    border-radius: 10px;
-    padding: 12px 14px;
-    cursor: pointer;
-    font-size: 0.83rem;
-    line-height: 1.5;
-    transition: border-color 0.15s, background 0.15s;
-    margin-bottom: 8px;
-    min-height: 80px;
-}
-.variant-card.active { border-color: #4F46E5; background: #EEF2FF; }
-.variant-card:hover:not(.active) { border-color: #A5B4FC; }
-
-/* ファクトチェックカード */
-.fc-header {
-    font-weight: 700;
-    font-size: 0.95rem;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-.verdict-good  { color: #059669; font-size: 1.1rem; }
-.verdict-warn  { color: #D97706; font-size: 1.1rem; }
-.verdict-bad   { color: #DC2626; font-size: 1.1rem; }
-.verdict-unk   { color: #6B7280; font-size: 1.1rem; }
-
-/* メモリ統計 */
-.stat-box {
-    background: #EEF2FF;
-    border-radius: 10px;
-    padding: 14px 16px;
-    text-align: center;
-}
-.stat-num { font-size: 1.8rem; font-weight: 800; color: #4F46E5; }
-.stat-lbl { font-size: 0.75rem; color: #6B7280; }
-
-/* セクション区切り */
+/* ═══ セクションヘッダー ═══ */
 .section-header {
-    background: linear-gradient(90deg, #EEF2FF 0%, transparent 100%);
-    border-left: 3px solid #4F46E5;
-    padding: 6px 12px;
-    border-radius: 4px;
-    font-weight: 700;
-    font-size: 0.95rem;
-    margin: 16px 0 10px;
-    color: #3730A3;
+    background: linear-gradient(90deg, #EEF2FF 0%, #F5F3FF 60%, transparent 100%);
+    border-left: 4px solid #4F46E5;
+    padding: 10px 16px;
+    border-radius: 0 8px 8px 0;
+    font-weight: 700; font-size: 1rem;
+    margin: 20px 0 14px;
+    color: #312E81;
+    letter-spacing: -.01em;
 }
 
-/* ドロップダウン内テキスト折り返し */
+/* ═══ 統計カード ═══ */
+.stat-box {
+    background: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%);
+    border-radius: 12px;
+    padding: 16px 12px;
+    text-align: center;
+    border: 1px solid #C7D2FE;
+    transition: transform .15s;
+}
+.stat-box:hover { transform: translateY(-2px); }
+.stat-num { font-size: 2rem; font-weight: 800; color: #4338CA; line-height: 1.2; }
+.stat-lbl { font-size: 0.72rem; color: #6366F1; margin-top: 2px; font-weight: 500; }
+
+/* ═══ ドロップダウン全文表示 ═══ */
 [data-baseweb="menu"] li {
     white-space: normal !important;
     overflow: visible !important;
     text-overflow: unset !important;
     height: auto !important;
-    padding-top: 10px !important;
-    padding-bottom: 10px !important;
-    line-height: 1.5 !important;
+    padding: 12px 14px !important;
+    line-height: 1.6 !important;
+    border-bottom: 1px solid #F3F4F6;
+}
+[data-baseweb="menu"] li:hover {
+    background: #EEF2FF !important;
+}
+
+/* ═══ ラジオボタンを候補カード風に ═══ */
+div[data-testid="stRadio"] > div[role="radiogroup"] > label {
+    background: white;
+    border: 1.5px solid #E5E7EB;
+    border-radius: 10px;
+    padding: 14px 18px !important;
+    margin-bottom: 8px;
+    transition: all .15s;
+    line-height: 1.65 !important;
+    cursor: pointer;
+}
+div[data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
+    border-color: #A5B4FC;
+    background: #FAFAFF;
+    box-shadow: 0 2px 8px rgba(79,70,229,.06);
+}
+div[data-testid="stRadio"] > div[role="radiogroup"] > label[data-checked="true"],
+div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
+    border-color: #4F46E5;
+    background: linear-gradient(135deg, #EEF2FF, #F5F3FF);
+    box-shadow: 0 2px 12px rgba(79,70,229,.10);
+}
+
+/* ═══ タブ ═══ */
+button[data-baseweb="tab"] {
+    font-weight: 600 !important;
+    font-size: 0.88rem !important;
+    padding: 10px 20px !important;
+    border-radius: 8px 8px 0 0 !important;
+}
+
+/* ═══ ボタン ═══ */
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #4F46E5 0%, #6D28D9 100%) !important;
+    border: none !important;
+    box-shadow: 0 2px 12px rgba(79,70,229,.25) !important;
+    font-weight: 600 !important;
+    letter-spacing: .01em;
+    transition: all .2s !important;
+}
+.stButton > button[kind="primary"]:hover {
+    box-shadow: 0 4px 20px rgba(79,70,229,.35) !important;
+    transform: translateY(-1px);
+}
+.stButton > button[kind="secondary"] {
+    border: 1.5px solid #D1D5DB !important;
+    font-weight: 500 !important;
+    transition: all .15s !important;
+}
+.stButton > button[kind="secondary"]:hover {
+    border-color: #4F46E5 !important;
+    color: #4F46E5 !important;
+    background: #EEF2FF !important;
+}
+
+/* ═══ テキストエリア ═══ */
+div[data-testid="stTextArea"] textarea {
+    border-radius: 10px !important;
+    border: 1.5px solid #D1D5DB !important;
+    font-size: 0.9rem !important;
+    line-height: 1.7 !important;
+    padding: 14px 16px !important;
+    transition: border-color .15s !important;
+}
+div[data-testid="stTextArea"] textarea:focus {
+    border-color: #4F46E5 !important;
+    box-shadow: 0 0 0 3px rgba(79,70,229,.1) !important;
+}
+
+/* ═══ エクスパンダ ═══ */
+details[data-testid="stExpander"] {
+    border: 1.5px solid #E5E7EB !important;
+    border-radius: 10px !important;
+    background: white;
+}
+details[data-testid="stExpander"] summary {
+    font-weight: 600;
+    font-size: 0.88rem;
+}
+
+/* ═══ マルチセレクト ═══ */
+div[data-testid="stMultiSelect"] > div > div {
+    border-radius: 10px !important;
+    border: 1.5px solid #D1D5DB !important;
+}
+
+/* ═══ divider ═══ */
+hr { border-color: #E5E7EB !important; margin: 20px 0 !important; }
+
+/* ═══ ダウンロードボタン ═══ */
+.stDownloadButton > button {
+    border-radius: 10px !important;
+    border: 1.5px solid #D1D5DB !important;
+    font-weight: 500 !important;
+}
+.stDownloadButton > button:hover {
+    border-color: #4F46E5 !important;
+    background: #EEF2FF !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -213,13 +269,13 @@ def reset_all():
 st.markdown("""
 <div class="page-header">
   <h1>📝 台本生成システム</h1>
-  <p>AI マルチエージェントが自動でテーマ → アイデア → 台本を生成</p>
+  <p>AI マルチエージェントがトレンド収集 → テーマ提案 → アイデア → 台本生成 → ファクトチェックまで自動で実行</p>
 </div>
 """, unsafe_allow_html=True)
 
 
 # ─── ステッププログレス ───────────────────────────────────────────────
-STEP_LABELS = ["タイプ選択", "テーマ選択", "アイデア選択", "台本作成", "完成・評価"]
+STEP_LABELS = ["タイプ選択", "テーマ選択", "アイデア選択", "台本作成", "FC・完成"]
 
 def render_steps():
     cur = st.session_state.sg_step
@@ -257,21 +313,43 @@ step = st.session_state.sg_step
 # Step 0: タイプ選択
 # ════════════════════════════════════════════════════════════════════
 if step == 0:
-    col_left, col_right = st.columns([2, 1])
+    st.markdown('<div class="section-header">Step 1 ／ 台本のタイプを選択</div>', unsafe_allow_html=True)
 
-    with col_left:
-        st.markdown('<div class="section-header">Step 1 ／ 台本のタイプを選択</div>', unsafe_allow_html=True)
+    col_yt, col_rl = st.columns(2)
+    current_type = st.session_state.sg_script_type
 
-        script_type = st.radio(
-            "台本タイプ",
-            options=["youtube", "reel"],
-            format_func=lambda x: "📺  YouTube台本（4500〜5000文字）" if x == "youtube" else "📱  リール台本（700〜800文字）",
-            index=0 if st.session_state.sg_script_type == "youtube" else 1,
-            label_visibility="collapsed",
-        )
-        st.caption("💡 Serper + YouTube Data API でトレンドを自動収集してテーマを提案します")
+    with col_yt:
+        yt_sel = "border-color:#4F46E5;background:linear-gradient(135deg,#EEF2FF,#F5F3FF);box-shadow:0 4px 16px rgba(79,70,229,.12);" if current_type == "youtube" else "border-color:#E5E7EB;background:white;"
+        st.markdown(f'''<div style="border:2px solid;{yt_sel}border-radius:14px;padding:24px;text-align:center;margin-bottom:4px;">
+<div style="font-size:2.2rem;margin-bottom:8px;">📺</div>
+<div style="font-size:1.05rem;font-weight:700;color:#1E1B4B;">YouTube 台本</div>
+<div style="font-size:0.82rem;color:#6B7280;margin-top:4px;">4,500〜5,000 文字 ｜ 長尺動画向け</div>
+</div>''', unsafe_allow_html=True)
+        if st.button("📺 YouTube を選択", use_container_width=True,
+                     type="primary" if current_type == "youtube" else "secondary",
+                     key="sel_yt"):
+            st.session_state.sg_script_type = "youtube"
+            st.rerun()
 
-    with col_right:
+    with col_rl:
+        rl_sel = "border-color:#4F46E5;background:linear-gradient(135deg,#EEF2FF,#F5F3FF);box-shadow:0 4px 16px rgba(79,70,229,.12);" if current_type == "reel" else "border-color:#E5E7EB;background:white;"
+        st.markdown(f'''<div style="border:2px solid;{rl_sel}border-radius:14px;padding:24px;text-align:center;margin-bottom:4px;">
+<div style="font-size:2.2rem;margin-bottom:8px;">📱</div>
+<div style="font-size:1.05rem;font-weight:700;color:#1E1B4B;">リール台本</div>
+<div style="font-size:0.82rem;color:#6B7280;margin-top:4px;">700〜800 文字 ｜ ショート動画向け</div>
+</div>''', unsafe_allow_html=True)
+        if st.button("📱 リール を選択", use_container_width=True,
+                     type="primary" if current_type == "reel" else "secondary",
+                     key="sel_rl"):
+            st.session_state.sg_script_type = "reel"
+            st.rerun()
+
+    script_type = current_type
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 統計 + AI情報
+    col_stats, col_ai = st.columns([3, 2])
+    with col_stats:
         try:
             from memory_manager import get_stats, get_next_angle, get_next_ai
             stats = get_stats(script_type)
@@ -284,9 +362,19 @@ if step == 0:
                 st.markdown(f'<div class="stat-box"><div class="stat-num" style="color:#059669">{stats.get("good_count",0)}</div><div class="stat-lbl">👍 好評</div></div>', unsafe_allow_html=True)
             with c3:
                 st.markdown(f'<div class="stat-box"><div class="stat-num" style="color:#DC2626">{stats.get("bad_count",0)}</div><div class="stat-lbl">👎 悪評</div></div>', unsafe_allow_html=True)
-            st.caption(f"次のアングル: **{angle_name}** ／ 担当AI: **{ai_name}**")
         except Exception:
-            st.info("📊 まだデータなし。使うたびに学習されます")
+            st.info("📊 まだデータなし — 使うたびにAIが学習していきます")
+    with col_ai:
+        try:
+            st.markdown(f'''<div style="background:white;border:1.5px solid #E5E7EB;border-radius:12px;padding:18px 20px;">
+<div style="font-size:0.75rem;color:#6B7280;font-weight:600;margin-bottom:10px;">🤖 次回の生成設定</div>
+<div style="font-size:0.88rem;margin-bottom:6px;"><b>アングル:</b> {angle_name}</div>
+<div style="font-size:0.88rem;"><b>担当AI:</b> {ai_name}</div>
+</div>''', unsafe_allow_html=True)
+        except Exception:
+            pass
+
+    st.caption("💡 Serper + YouTube Data API でトレンドを自動収集してテーマを提案します")
 
     st.divider()
     if st.button("テーマを自動生成 →", type="primary"):
