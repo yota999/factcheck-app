@@ -58,6 +58,9 @@ def _init():
         "sg_saved": False,
         "sg_ng_themes_to_save": [],
         "sg_ng_ideas_to_save": [],
+        "sg_rating_mode": None,       # "good" | "bad" | "done"
+        "sg_learned_elements": [],    # 好評分析で抽出した要素
+        "sg_learned_pattern": "",     # 悪評分析で抽出したパターン
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -686,39 +689,131 @@ elif step == 4:
 
         st.divider()
 
-        if not st.session_state.sg_saved:
+        theme = (st.session_state.sg_selected_themes[0]
+                 if st.session_state.sg_selected_themes else "不明")
+        angle_key = st.session_state.sg_current_angle[0]
+        model_id = st.session_state.sg_current_ai[0]
+        rating_mode = st.session_state.sg_rating_mode
+
+        # ── 評価ボタン（未評価時のみ表示）─────────────────────────
+        if rating_mode is None:
             st.subheader("この台本を評価してください")
-            st.caption("評価はメモリに保存され、次回の生成品質向上に使われます")
-
-            theme = (st.session_state.sg_selected_themes[0]
-                     if st.session_state.sg_selected_themes else "不明")
-            angle_key = st.session_state.sg_current_angle[0]
-
+            st.caption("評価結果をAIが分析し、次回の生成に自動反映されます")
             col_good, col_bad = st.columns(2)
             with col_good:
                 if st.button("👍 良い台本だった", type="primary", use_container_width=True):
+                    st.session_state.sg_rating_mode = "good"
+                    st.rerun()
+            with col_bad:
+                if st.button("👎 改善が必要", use_container_width=True):
+                    st.session_state.sg_rating_mode = "bad"
+                    st.rerun()
+
+        # ── 👍 好評フロー：AI分析 → 保存 ──────────────────────────
+        elif rating_mode == "good":
+            if not st.session_state.sg_learned_elements:
+                with st.spinner("🔍 台本の好評ポイントをAIが分析中..."):
+                    try:
+                        from script_crew import analyze_good_elements
+                        elements = analyze_good_elements(final_script, script_type, model_id)
+                    except Exception:
+                        elements = []
+                    # 台本を保存 + 好評要素を記録
                     try:
                         from memory_manager import save_script, record_theme_used
+                        from memory_manager import _load_history, _save_history, _type_data, ANGLE_NAMES
                         save_script(script=final_script, rating="good", theme=theme,
                                     script_type=script_type, angle=angle_key)
                         record_theme_used(theme=theme, script_type=script_type, angle=angle_key)
-                        st.session_state.sg_saved = True
-                        st.rerun()
+                        # AI抽出要素を追加保存
+                        if elements:
+                            history = _load_history()
+                            td = _type_data(history, script_type)
+                            for el in elements:
+                                if el not in td["good_elements"]:
+                                    td["good_elements"].append(el)
+                            td["good_elements"] = td["good_elements"][-30:]
+                            _save_history(history)
                     except Exception as e:
                         st.error(f"保存エラー: {e}")
-            with col_bad:
-                if st.button("👎 改善が必要", use_container_width=True):
-                    try:
-                        from memory_manager import save_script, record_theme_used
-                        save_script(script=final_script, rating="bad", theme=theme,
-                                    script_type=script_type, angle=angle_key)
-                        record_theme_used(theme=theme, script_type=script_type, angle=angle_key)
-                        st.session_state.sg_saved = True
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"保存エラー: {e}")
-        else:
-            st.success("✅ 評価を保存しました！次回の台本生成に反映されます。")
+                    st.session_state.sg_learned_elements = elements if elements else ["（分析データなし）"]
+                    st.session_state.sg_saved = True
+                    st.rerun()
+            else:
+                st.success("✅ 好評として保存しました！次回の生成に反映されます")
+                elements = st.session_state.sg_learned_elements
+                if elements and elements != ["（分析データなし）"]:
+                    st.info("**📚 今回学習した好評ポイント（次回から参考にされます）**\n\n" +
+                            "\n".join(f"・{e}" for e in elements))
+
+        # ── 👎 悪評フロー：NG登録フォーム → 保存 ────────────────────
+        elif rating_mode == "bad":
+            if not st.session_state.sg_saved:
+                st.subheader("改善フィードバック")
+                st.caption("何が問題だったか教えてください。次回の生成に反映されます")
+
+                # NGテーマ選択
+                ng_themes = st.multiselect(
+                    "🚫 NGにするテーマ（次回は生成されなくなります）",
+                    options=st.session_state.sg_selected_themes,
+                    default=[],
+                    key="sg_bad_ng_themes",
+                )
+                # NGアイデア選択
+                ng_ideas = st.multiselect(
+                    "🚫 NGにするアイデア（次回は生成されなくなります）",
+                    options=st.session_state.sg_selected_ideas or [],
+                    default=[],
+                    key="sg_bad_ng_ideas",
+                )
+                # 自由コメント
+                bad_note = st.text_input(
+                    "💬 悪かった点を一言で（任意）",
+                    placeholder="例：感情訴求が弱かった、情報が古かった など",
+                    key="sg_bad_note",
+                )
+
+                if st.button("💾 フィードバックを保存して学習させる", type="primary"):
+                    with st.spinner("🔍 AIが改善パターンを分析中..."):
+                        try:
+                            from script_crew import analyze_bad_pattern
+                            pattern = analyze_bad_pattern(final_script, script_type, bad_note, model_id)
+                        except Exception:
+                            pattern = bad_note if bad_note else ""
+
+                        try:
+                            from memory_manager import (save_script, record_theme_used,
+                                add_rejected_themes, add_rejected_ideas,
+                                _load_history, _save_history, _type_data)
+                            save_script(script=final_script, rating="bad", theme=theme,
+                                        script_type=script_type, angle=angle_key)
+                            record_theme_used(theme=theme, script_type=script_type, angle=angle_key)
+                            if ng_themes:
+                                add_rejected_themes(ng_themes, script_type)
+                            if ng_ideas:
+                                add_rejected_ideas(ng_ideas, script_type)
+                            # AI分析パターンを bad_patterns に追加
+                            if pattern:
+                                history = _load_history()
+                                td = _type_data(history, script_type)
+                                if pattern not in td["bad_patterns"]:
+                                    td["bad_patterns"].append(pattern)
+                                td["bad_patterns"] = td["bad_patterns"][-30:]
+                                _save_history(history)
+                        except Exception as e:
+                            st.error(f"保存エラー: {e}")
+
+                    st.session_state.sg_learned_pattern = pattern
+                    st.session_state.sg_saved = True
+                    st.rerun()
+            else:
+                st.warning("⚠️ 改善フィードバックを保存しました。次回の生成に反映されます")
+                if st.session_state.sg_learned_pattern:
+                    st.info(f"**📚 学習した改善パターン：** {st.session_state.sg_learned_pattern}")
+
+        # ── 評価完了後の共通表示 ──────────────────────────────────
+        if rating_mode == "done" or st.session_state.sg_saved:
+            pass  # 上の各ブランチで表示済み
 
         st.divider()
         if st.button("🔄 新しい台本を生成する", type="secondary", use_container_width=False):

@@ -352,6 +352,53 @@ def generate_titles(draft: str, script_type: str,
     return _call_llm(prompt, model=model, temperature=0.8, max_tokens=1000)
 
 
+# ── 台本の評価・分析 ──────────────────────────────────────────────────
+
+def analyze_good_elements(script: str, script_type: str, model: str) -> list:
+    """好評台本から効果的だったポイントを2〜3個抽出してリストで返す"""
+    type_name = "YouTube台本（4500〜5000文字）" if script_type == "youtube" else "リール台本（700〜800文字）"
+    prompt = f"""以下の{type_name}を読んで、特に効果的だった構成・表現・手法を2〜3個、簡潔な日本語の箇条書きで抽出してください。
+
+【抽出のポイント】
+- 冒頭のフック手法（例：「○○という衝撃データを提示して引き込む」）
+- 構成の工夫（例：「問題提起→共感→解決策→行動促進の流れ」）
+- 訴求の強さ（例：「数字・体験談を組み合わせた信頼感の出し方」）
+
+箇条書きのみを返してください（・で始まる形式で）。説明文・見出し・前置きは不要。
+
+--- 台本 ---
+{script[:2000]}
+---"""
+    try:
+        text = _call_llm(prompt, model=model, temperature=0.3, max_tokens=300)
+        elements = []
+        for line in text.split("\n"):
+            line = line.strip().lstrip("・-•* 　").strip()
+            if line and len(line) > 5:
+                elements.append(line)
+        return elements[:3]
+    except Exception:
+        return []
+
+
+def analyze_bad_pattern(script: str, script_type: str, bad_note: str, model: str) -> str:
+    """悪評台本から改善すべきパターンを1行で返す"""
+    type_name = "YouTube台本" if script_type == "youtube" else "リール台本"
+    note_text = f"\n【ユーザーコメント】: {bad_note}" if bad_note else ""
+    prompt = f"""以下の{type_name}が不評でした。{note_text}
+次回避けるべきパターンを1行（30文字以内）で簡潔に記述してください。
+文章のみ返してください（例：「感情訴求が弱く論理だけで説得力不足」）。
+
+--- 台本（冒頭のみ）---
+{script[:800]}
+---"""
+    try:
+        text = _call_llm(prompt, model=model, temperature=0.3, max_tokens=80)
+        return text.strip().split("\n")[0][:60]
+    except Exception:
+        return ""
+
+
 # ── 全情報を並行取得してテーマ生成（UIから呼ぶ） ─────────────────────
 def fetch_all_trends() -> tuple:
     """Serper通常検索・動画検索・YouTube Data APIを並行実行"""
