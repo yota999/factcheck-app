@@ -26,17 +26,16 @@ AI_ROTATION = [
     ("xai/grok-2", "Grok 2"),
 ]
 
+SCRIPT_TYPES = ["youtube", "reel"]
+
 
 def _ensure_dirs():
     GOOD_DIR.mkdir(parents=True, exist_ok=True)
     BAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _load_history() -> dict:
-    _ensure_dirs()
-    if HISTORY_FILE.exists():
-        with open(HISTORY_FILE, encoding="utf-8") as f:
-            return json.load(f)
+def _default_type_data() -> dict:
+    """台本タイプごとのデフォルトデータ構造"""
     return {
         "used_themes": [],
         "next_angle_index": 0,
@@ -49,65 +48,101 @@ def _load_history() -> dict:
     }
 
 
+def _load_history() -> dict:
+    _ensure_dirs()
+    if HISTORY_FILE.exists():
+        with open(HISTORY_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        # 旧フォーマット（フラット構造）を新フォーマットへ移行
+        if "youtube" not in data and "reel" not in data:
+            data = _migrate_legacy(data)
+    else:
+        data = {}
+    # 不足キーを補完
+    for t in SCRIPT_TYPES:
+        if t not in data:
+            data[t] = _default_type_data()
+        else:
+            for k, v in _default_type_data().items():
+                data[t].setdefault(k, v)
+    return data
+
+
+def _migrate_legacy(old: dict) -> dict:
+    """旧history.jsonを新フォーマットに変換（既存データを youtube に移行）"""
+    new = {}
+    for t in SCRIPT_TYPES:
+        new[t] = _default_type_data()
+    # 旧データはすべて youtube に引き継ぐ
+    new["youtube"]["used_themes"] = old.get("used_themes", [])
+    new["youtube"]["next_angle_index"] = old.get("next_angle_index", 0)
+    new["youtube"]["next_ai_index"] = old.get("next_ai_index", 0)
+    new["youtube"]["good_elements"] = old.get("good_elements", [])
+    new["youtube"]["bad_patterns"] = old.get("bad_patterns", [])
+    new["youtube"]["rejected_themes"] = old.get("rejected_themes", [])
+    new["youtube"]["rejected_ideas"] = old.get("rejected_ideas", [])
+    new["youtube"]["stats"] = old.get("stats", {"total_generated": 0, "good_count": 0, "bad_count": 0})
+    return new
+
+
 def _save_history(data: dict):
     _ensure_dirs()
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def _ensure_keys(history: dict) -> dict:
-    """古いhistory.jsonに新しいキーがない場合に補完する"""
-    defaults = {
-        "next_ai_index": 0,
-        "rejected_themes": [],
-        "rejected_ideas": [],
-        "good_elements": history.get("good_elements", []),
-        "bad_patterns": history.get("bad_patterns", []),
-    }
-    for k, v in defaults.items():
-        history.setdefault(k, v)
-    return history
+def _type_data(history: dict, script_type: str) -> dict:
+    """指定タイプのデータを取得（存在しなければ初期化）"""
+    if script_type not in history:
+        history[script_type] = _default_type_data()
+    return history[script_type]
 
 
 # ── 読み取り系 ────────────────────────────────────────────────────────
 
-def get_used_themes() -> list:
-    """過去に使ったテーマ一覧（重複防止用）"""
+def get_used_themes(script_type: str) -> list:
+    """過去に使ったテーマ一覧（タイプ別・重複防止用）"""
     history = _load_history()
-    return [t["theme"] for t in history.get("used_themes", [])]
+    return [t["theme"] for t in _type_data(history, script_type).get("used_themes", [])]
 
 
-def get_next_angle() -> tuple:
-    """次に使うアングルを返す (angle_key, angle_name)"""
+def get_next_angle(script_type: str) -> tuple:
+    """次に使うアングルを返す (angle_key, angle_name) タイプ別"""
     history = _load_history()
-    idx = history.get("next_angle_index", 0) % len(ANGLE_ROTATION)
+    idx = _type_data(history, script_type).get("next_angle_index", 0) % len(ANGLE_ROTATION)
     angle = ANGLE_ROTATION[idx]
     return angle, ANGLE_NAMES[angle]
 
 
-def get_next_ai() -> tuple:
-    """次に使うAIモデルを返す (model_id, model_name)"""
-    history = _ensure_keys(_load_history())
-    idx = history.get("next_ai_index", 0) % len(AI_ROTATION)
+def get_next_ai(script_type: str) -> tuple:
+    """次に使うAIモデルを返す (model_id, model_name) タイプ別"""
+    history = _load_history()
+    idx = _type_data(history, script_type).get("next_ai_index", 0) % len(AI_ROTATION)
     return AI_ROTATION[idx]
 
 
-def get_good_elements() -> list:
-    return _load_history().get("good_elements", [])
+def get_good_elements(script_type: str) -> list:
+    """好評だった要素一覧（タイプ別）"""
+    history = _load_history()
+    return _type_data(history, script_type).get("good_elements", [])
 
 
-def get_bad_patterns() -> list:
-    return _load_history().get("bad_patterns", [])
+def get_bad_patterns(script_type: str) -> list:
+    """不評だったパターン一覧（タイプ別）"""
+    history = _load_history()
+    return _type_data(history, script_type).get("bad_patterns", [])
 
 
-def get_rejected_themes() -> list:
-    """NG登録されたテーマ一覧"""
-    return _ensure_keys(_load_history()).get("rejected_themes", [])
+def get_rejected_themes(script_type: str) -> list:
+    """NG登録されたテーマ一覧（タイプ別）"""
+    history = _load_history()
+    return _type_data(history, script_type).get("rejected_themes", [])
 
 
-def get_rejected_ideas() -> list:
-    """NG登録されたアイデア一覧"""
-    return _ensure_keys(_load_history()).get("rejected_ideas", [])
+def get_rejected_ideas(script_type: str) -> list:
+    """NG登録されたアイデア一覧（タイプ別）"""
+    history = _load_history()
+    return _type_data(history, script_type).get("rejected_ideas", [])
 
 
 def get_reference_scripts(script_type: str, n: int = 3) -> list:
@@ -133,42 +168,57 @@ def get_reference_scripts(script_type: str, n: int = 3) -> list:
     return [body for _, body in chosen]
 
 
-def get_stats() -> dict:
-    return _load_history().get("stats", {})
+def get_stats(script_type: str) -> dict:
+    """統計情報（タイプ別）"""
+    history = _load_history()
+    return _type_data(history, script_type).get("stats", {})
+
+
+def get_all_stats() -> dict:
+    """全タイプの統計合計（サイドバー表示用）"""
+    history = _load_history()
+    total = {"total_generated": 0, "good_count": 0, "bad_count": 0}
+    for t in SCRIPT_TYPES:
+        s = _type_data(history, t).get("stats", {})
+        for k in total:
+            total[k] += s.get(k, 0)
+    return total
 
 
 # ── 書き込み系 ────────────────────────────────────────────────────────
 
-def add_rejected_themes(themes: list):
-    """テーマをNG登録する（重複なし・最新100件保持）"""
+def add_rejected_themes(themes: list, script_type: str):
+    """テーマをNG登録する（タイプ別・重複なし・最新100件保持）"""
     if not themes:
         return
-    history = _ensure_keys(_load_history())
-    existing = set(history["rejected_themes"])
+    history = _load_history()
+    td = _type_data(history, script_type)
+    existing = set(td["rejected_themes"])
     for t in themes:
         if t not in existing:
-            history["rejected_themes"].append(t)
+            td["rejected_themes"].append(t)
             existing.add(t)
-    history["rejected_themes"] = history["rejected_themes"][-100:]
+    td["rejected_themes"] = td["rejected_themes"][-100:]
     _save_history(history)
 
 
-def add_rejected_ideas(ideas: list):
-    """アイデアをNG登録する（重複なし・最新100件保持）"""
+def add_rejected_ideas(ideas: list, script_type: str):
+    """アイデアをNG登録する（タイプ別・重複なし・最新100件保持）"""
     if not ideas:
         return
-    history = _ensure_keys(_load_history())
-    existing = set(history["rejected_ideas"])
+    history = _load_history()
+    td = _type_data(history, script_type)
+    existing = set(td["rejected_ideas"])
     for i in ideas:
         if i not in existing:
-            history["rejected_ideas"].append(i)
+            td["rejected_ideas"].append(i)
             existing.add(i)
-    history["rejected_ideas"] = history["rejected_ideas"][-100:]
+    td["rejected_ideas"] = td["rejected_ideas"][-100:]
     _save_history(history)
 
 
 def save_script(script: str, rating: str, theme: str, script_type: str, angle: str):
-    """台本を good/ or bad/ に保存し、good_elements / bad_patterns を更新する"""
+    """台本を good/ or bad/ に保存し、good_elements / bad_patterns を更新する（タイプ別）"""
     _ensure_dirs()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{script_type}_{ts}.txt"
@@ -180,49 +230,49 @@ def save_script(script: str, rating: str, theme: str, script_type: str, angle: s
         f.write(f"# 評価: {rating}\n\n")
         f.write(script)
 
-    history = _ensure_keys(_load_history())
-    stats = history.setdefault("stats", {})
+    history = _load_history()
+    td = _type_data(history, script_type)
+    stats = td.setdefault("stats", {})
 
     if rating == "good":
         stats["good_count"] = stats.get("good_count", 0) + 1
-        # 好評台本からテーマ・アングルを good_elements に記録
         element = f"テーマ「{theme}」×アングル「{ANGLE_NAMES.get(angle, angle)}」"
-        if element not in history["good_elements"]:
-            history["good_elements"].append(element)
-        history["good_elements"] = history["good_elements"][-30:]
+        if element not in td["good_elements"]:
+            td["good_elements"].append(element)
+        td["good_elements"] = td["good_elements"][-30:]
     else:
         stats["bad_count"] = stats.get("bad_count", 0) + 1
-        # 悪評台本のテーマ・アングルを bad_patterns に記録
         pattern = f"テーマ「{theme}」×アングル「{ANGLE_NAMES.get(angle, angle)}」の組み合わせは不評"
-        if pattern not in history["bad_patterns"]:
-            history["bad_patterns"].append(pattern)
-        history["bad_patterns"] = history["bad_patterns"][-30:]
+        if pattern not in td["bad_patterns"]:
+            td["bad_patterns"].append(pattern)
+        td["bad_patterns"] = td["bad_patterns"][-30:]
 
     _save_history(history)
 
 
 def record_theme_used(theme: str, script_type: str, angle: str):
-    """テーマ使用済みを記録し、次のアングル・AIに進める"""
-    history = _ensure_keys(_load_history())
+    """テーマ使用済みを記録し、次のアングル・AIに進める（タイプ別）"""
+    history = _load_history()
+    td = _type_data(history, script_type)
 
-    history.setdefault("used_themes", []).append({
+    td.setdefault("used_themes", []).append({
         "theme": theme,
         "date": datetime.now().strftime("%Y-%m-%d"),
         "type": script_type,
         "angle": angle,
     })
-    history["used_themes"] = history["used_themes"][-50:]
+    td["used_themes"] = td["used_themes"][-50:]
 
-    stats = history.setdefault("stats", {})
+    stats = td.setdefault("stats", {})
     stats["total_generated"] = stats.get("total_generated", 0) + 1
 
-    # アングルを次に進める
-    idx = history.get("next_angle_index", 0)
-    history["next_angle_index"] = (idx + 1) % len(ANGLE_ROTATION)
+    # アングルを次に進める（タイプ別）
+    idx = td.get("next_angle_index", 0)
+    td["next_angle_index"] = (idx + 1) % len(ANGLE_ROTATION)
 
-    # AIを次に進める
-    ai_idx = history.get("next_ai_index", 0)
-    history["next_ai_index"] = (ai_idx + 1) % len(AI_ROTATION)
+    # AIを次に進める（タイプ別）
+    ai_idx = td.get("next_ai_index", 0)
+    td["next_ai_index"] = (ai_idx + 1) % len(AI_ROTATION)
 
     _save_history(history)
 
@@ -244,8 +294,6 @@ def get_all_scripts_for_history() -> list:
                             meta["script_type"] = line.replace("# タイプ:", "").strip()
                         elif line.startswith("# アングル:"):
                             meta["angle"] = line.replace("# アングル:", "").strip()
-                        elif line.startswith("# 評価:"):
-                            pass
                         elif not line.startswith("#") and line.strip():
                             break
             except Exception:

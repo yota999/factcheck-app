@@ -130,9 +130,9 @@ if step == 0:
     with col_stats:
         try:
             from memory_manager import get_stats, get_next_angle, get_next_ai
-            stats = get_stats()
-            angle_key, angle_name = get_next_angle()
-            _, ai_name = get_next_ai()
+            stats = get_stats(script_type)
+            angle_key, angle_name = get_next_angle(script_type)
+            _, ai_name = get_next_ai(script_type)
             st.info(
                 f"**メモリ統計**\n\n"
                 f"生成済み: {stats.get('total_generated', 0)}本\n\n"
@@ -150,10 +150,10 @@ if step == 0:
 
         try:
             from memory_manager import get_used_themes, get_next_angle, get_next_ai, get_rejected_themes
-            used_themes = get_used_themes()
-            rejected_themes = get_rejected_themes()
-            angle_key, angle_name = get_next_angle()
-            model_id, model_name = get_next_ai()
+            used_themes = get_used_themes(script_type)
+            rejected_themes = get_rejected_themes(script_type)
+            angle_key, angle_name = get_next_angle(script_type)
+            model_id, model_name = get_next_ai(script_type)
         except Exception:
             used_themes, rejected_themes = [], []
             angle_key, angle_name = "science", "科学・データ根拠型"
@@ -226,7 +226,7 @@ elif step == 1:
                          disabled=not ng_selected):
                 try:
                     from memory_manager import add_rejected_themes
-                    add_rejected_themes(ng_selected)
+                    add_rejected_themes(ng_selected, st.session_state.sg_script_type)
                     st.success(f"✅ {len(ng_selected)}件をNG登録しました")
                 except Exception as e:
                     st.error(f"保存エラー: {e}")
@@ -264,10 +264,10 @@ elif step == 1:
             if st.button("🔄 再生成", help="別のAIで新しいテーマを生成します"):
                 try:
                     from memory_manager import get_used_themes, get_next_angle, get_next_ai, get_rejected_themes
-                    used_themes = get_used_themes()
-                    rejected_themes = get_rejected_themes()
-                    angle_key, angle_name = get_next_angle()
-                    model_id, model_name = get_next_ai()
+                    used_themes = get_used_themes(st.session_state.sg_script_type)
+                    rejected_themes = get_rejected_themes(st.session_state.sg_script_type)
+                    angle_key, angle_name = get_next_angle(st.session_state.sg_script_type)
+                    model_id, model_name = get_next_ai(st.session_state.sg_script_type)
                 except Exception:
                     used_themes, rejected_themes = [], []
                     angle_key, angle_name = "science", "科学・データ根拠型"
@@ -307,8 +307,8 @@ elif step == 1:
 
                 try:
                     from memory_manager import get_good_elements, get_rejected_ideas
-                    good_elements = get_good_elements()
-                    rejected_ideas = get_rejected_ideas()
+                    good_elements = get_good_elements(st.session_state.sg_script_type)
+                    rejected_ideas = get_rejected_ideas(st.session_state.sg_script_type)
                 except Exception:
                     good_elements, rejected_ideas = [], []
 
@@ -367,7 +367,7 @@ elif step == 2:
                          disabled=not ng_selected):
                 try:
                     from memory_manager import add_rejected_ideas
-                    add_rejected_ideas(ng_selected)
+                    add_rejected_ideas(ng_selected, st.session_state.sg_script_type)
                     st.success(f"✅ {len(ng_selected)}件をNG登録しました")
                 except Exception as e:
                     st.error(f"保存エラー: {e}")
@@ -407,8 +407,8 @@ elif step == 2:
                 angle_name = st.session_state.sg_current_angle[1]
                 try:
                     from memory_manager import get_good_elements, get_rejected_ideas
-                    good_elements = get_good_elements()
-                    rejected_ideas = get_rejected_ideas()
+                    good_elements = get_good_elements(st.session_state.sg_script_type)
+                    rejected_ideas = get_rejected_ideas(st.session_state.sg_script_type)
                 except Exception:
                     good_elements, rejected_ideas = [], []
 
@@ -440,8 +440,8 @@ elif step == 2:
 
                 try:
                     from memory_manager import get_good_elements, get_bad_patterns, get_reference_scripts
-                    good_elements = get_good_elements()
-                    bad_patterns = get_bad_patterns()
+                    good_elements = get_good_elements(st.session_state.sg_script_type)
+                    bad_patterns = get_bad_patterns(st.session_state.sg_script_type)
                     ref_scripts = get_reference_scripts(st.session_state.sg_script_type)
                 except Exception:
                     good_elements, bad_patterns, ref_scripts = [], [], []
@@ -505,8 +505,8 @@ elif step == 3:
             model_id = st.session_state.sg_current_ai[0]
             try:
                 from memory_manager import get_good_elements, get_bad_patterns, get_reference_scripts
-                good_elements = get_good_elements()
-                bad_patterns = get_bad_patterns()
+                good_elements = get_good_elements(script_type)
+                bad_patterns = get_bad_patterns(script_type)
                 ref_scripts = get_reference_scripts(script_type)
             except Exception:
                 good_elements, bad_patterns, ref_scripts = [], [], []
