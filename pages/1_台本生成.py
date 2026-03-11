@@ -25,6 +25,21 @@ st.set_page_config(
     layout="wide",
 )
 
+# ドロップダウンの選択肢テキストを折り返して全文表示
+st.markdown("""
+<style>
+[data-baseweb="menu"] li {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    height: auto !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+    line-height: 1.5 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ─── Session State 初期化 ─────────────────────────────────────────────
 def _init():
     defaults = {
