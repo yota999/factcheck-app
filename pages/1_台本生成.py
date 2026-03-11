@@ -25,9 +25,138 @@ st.set_page_config(
     layout="wide",
 )
 
-# ドロップダウンの選択肢テキストを折り返して全文表示
+# ─── CSS ──────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
+/* ベースデザイン */
+.main { background: #f0f2f6; }
+
+/* カード */
+.card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px 24px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    margin-bottom: 16px;
+}
+.card-blue  { border-left: 4px solid #4F46E5; }
+.card-green { border-left: 4px solid #059669; }
+.card-amber { border-left: 4px solid #D97706; }
+.card-red   { border-left: 4px solid #DC2626; }
+.card-gray  { border-left: 4px solid #9CA3AF; }
+
+/* ページタイトル */
+.page-header {
+    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+    border-radius: 14px;
+    padding: 24px 28px;
+    color: white;
+    margin-bottom: 20px;
+}
+.page-header h1 { margin: 0; font-size: 1.8rem; color: white; }
+.page-header p  { margin: 4px 0 0; opacity: 0.85; font-size: 0.95rem; }
+
+/* ステッププログレス */
+.steps-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: white;
+    border-radius: 12px;
+    padding: 14px 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    margin-bottom: 20px;
+    gap: 4px;
+}
+.step-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    position: relative;
+}
+.step-num {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem; font-weight: 700;
+    margin-bottom: 4px;
+}
+.step-label { font-size: 0.72rem; text-align: center; white-space: nowrap; }
+.step-done  .step-num { background: #059669; color: white; }
+.step-done  .step-label { color: #059669; }
+.step-active .step-num { background: #4F46E5; color: white; box-shadow: 0 0 0 3px #C7D2FE; }
+.step-active .step-label { color: #4F46E5; font-weight: 700; }
+.step-pending .step-num { background: #E5E7EB; color: #9CA3AF; }
+.step-pending .step-label { color: #9CA3AF; }
+.step-connector {
+    height: 2px; background: #E5E7EB; flex: 0 0 20px; margin-bottom: 20px;
+}
+.step-connector.done { background: #059669; }
+
+/* タイプ選択カード */
+.type-card {
+    border: 2px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+}
+.type-card.selected { border-color: #4F46E5; background: #EEF2FF; }
+
+/* バリアントカード（セクションビルダー） */
+.variant-card {
+    border: 2px solid #E5E7EB;
+    border-radius: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    font-size: 0.83rem;
+    line-height: 1.5;
+    transition: border-color 0.15s, background 0.15s;
+    margin-bottom: 8px;
+    min-height: 80px;
+}
+.variant-card.active { border-color: #4F46E5; background: #EEF2FF; }
+.variant-card:hover:not(.active) { border-color: #A5B4FC; }
+
+/* ファクトチェックカード */
+.fc-header {
+    font-weight: 700;
+    font-size: 0.95rem;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.verdict-good  { color: #059669; font-size: 1.1rem; }
+.verdict-warn  { color: #D97706; font-size: 1.1rem; }
+.verdict-bad   { color: #DC2626; font-size: 1.1rem; }
+.verdict-unk   { color: #6B7280; font-size: 1.1rem; }
+
+/* メモリ統計 */
+.stat-box {
+    background: #EEF2FF;
+    border-radius: 10px;
+    padding: 14px 16px;
+    text-align: center;
+}
+.stat-num { font-size: 1.8rem; font-weight: 800; color: #4F46E5; }
+.stat-lbl { font-size: 0.75rem; color: #6B7280; }
+
+/* セクション区切り */
+.section-header {
+    background: linear-gradient(90deg, #EEF2FF 0%, transparent 100%);
+    border-left: 3px solid #4F46E5;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    margin: 16px 0 10px;
+    color: #3730A3;
+}
+
+/* ドロップダウン内テキスト折り返し */
 [data-baseweb="menu"] li {
     white-space: normal !important;
     overflow: visible !important;
@@ -39,6 +168,7 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
+
 
 # ─── Session State 初期化 ─────────────────────────────────────────────
 def _init():
@@ -56,11 +186,14 @@ def _init():
         "sg_current_angle": ("science", "科学・データ根拠型"),
         "sg_current_ai": ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"),
         "sg_saved": False,
-        "sg_ng_themes_to_save": [],
-        "sg_ng_ideas_to_save": [],
-        "sg_rating_mode": None,       # "good" | "bad" | "done"
-        "sg_learned_elements": [],    # 好評分析で抽出した要素
-        "sg_learned_pattern": "",     # 悪評分析で抽出したパターン
+        "sg_rating_mode": None,
+        "sg_learned_elements": [],
+        "sg_learned_pattern": "",
+        # セクションビルダー
+        "sg_section_mode": False,
+        "sg_sections": [],
+        # ファクトチェック
+        "sg_fc_results": [],
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -76,36 +209,46 @@ def reset_all():
     _init()
 
 
-# ─── ステッププログレスバー ───────────────────────────────────────────
-STEP_LABELS = ["タイプ選択", "テーマ選択", "アイデア選択", "台本確認", "完成・評価"]
+# ─── ページヘッダー ───────────────────────────────────────────────────
+st.markdown("""
+<div class="page-header">
+  <h1>📝 台本生成システム</h1>
+  <p>AI マルチエージェントが自動でテーマ → アイデア → 台本を生成</p>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ─── ステッププログレス ───────────────────────────────────────────────
+STEP_LABELS = ["タイプ選択", "テーマ選択", "アイデア選択", "台本作成", "完成・評価"]
 
 def render_steps():
     cur = st.session_state.sg_step
-    cols = st.columns(len(STEP_LABELS))
-    for i, (col, label) in enumerate(zip(cols, STEP_LABELS)):
-        with col:
-            if i < cur:
-                st.markdown(
-                    f"<div style='text-align:center;color:#4CAF50;font-weight:bold;'>"
-                    f"✅ {label}</div>",
-                    unsafe_allow_html=True,
-                )
-            elif i == cur:
-                st.markdown(
-                    f"<div style='text-align:center;color:#1f77b4;font-weight:bold;"
-                    f"border-bottom:3px solid #1f77b4;padding-bottom:4px;'>"
-                    f"▶ {label}</div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    f"<div style='text-align:center;color:#aaa;'>{label}</div>",
-                    unsafe_allow_html=True,
-                )
+    parts = []
+    for i, label in enumerate(STEP_LABELS):
+        if i < cur:
+            cls = "step-done"
+            num_html = "✓"
+        elif i == cur:
+            cls = "step-active"
+            num_html = str(i + 1)
+        else:
+            cls = "step-pending"
+            num_html = str(i + 1)
+        parts.append(
+            f'<div class="step-item {cls}">'
+            f'<div class="step-num">{num_html}</div>'
+            f'<div class="step-label">{label}</div>'
+            f'</div>'
+        )
+        if i < len(STEP_LABELS) - 1:
+            conn_cls = "done" if i < cur else ""
+            parts.append(f'<div class="step-connector {conn_cls}"></div>')
+    st.markdown(
+        f'<div class="steps-wrap">{"".join(parts)}</div>',
+        unsafe_allow_html=True,
+    )
 
-st.title("📝 台本生成システム")
 render_steps()
-st.divider()
 
 step = st.session_state.sg_step
 
@@ -114,43 +257,40 @@ step = st.session_state.sg_step
 # Step 0: タイプ選択
 # ════════════════════════════════════════════════════════════════════
 if step == 0:
-    st.subheader("Step 1: 台本のタイプを選択")
+    col_left, col_right = st.columns([2, 1])
 
-    col_type, col_stats = st.columns([2, 1])
+    with col_left:
+        st.markdown('<div class="section-header">Step 1 ／ 台本のタイプを選択</div>', unsafe_allow_html=True)
 
-    with col_type:
         script_type = st.radio(
-            "台本タイプを選択",
+            "台本タイプ",
             options=["youtube", "reel"],
-            format_func=lambda x: (
-                "📹 YouTube台本（4500〜5000文字）" if x == "youtube"
-                else "📱 リール台本（700〜800文字）"
-            ),
+            format_func=lambda x: "📺  YouTube台本（4500〜5000文字）" if x == "youtube" else "📱  リール台本（700〜800文字）",
             index=0 if st.session_state.sg_script_type == "youtube" else 1,
+            label_visibility="collapsed",
         )
         st.caption("💡 Serper + YouTube Data API でトレンドを自動収集してテーマを提案します")
 
-    with col_stats:
+    with col_right:
         try:
             from memory_manager import get_stats, get_next_angle, get_next_ai
             stats = get_stats(script_type)
             angle_key, angle_name = get_next_angle(script_type)
             _, ai_name = get_next_ai(script_type)
-            st.info(
-                f"**メモリ統計**\n\n"
-                f"生成済み: {stats.get('total_generated', 0)}本\n\n"
-                f"👍 好評: {stats.get('good_count', 0)}本\n\n"
-                f"👎 悪評: {stats.get('bad_count', 0)}本\n\n"
-                f"---\n\n**次のアングル**\n\n{angle_name}\n\n"
-                f"**担当AI**\n\n{ai_name}"
-            )
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown(f'<div class="stat-box"><div class="stat-num">{stats.get("total_generated",0)}</div><div class="stat-lbl">生成済み</div></div>', unsafe_allow_html=True)
+            with c2:
+                st.markdown(f'<div class="stat-box"><div class="stat-num" style="color:#059669">{stats.get("good_count",0)}</div><div class="stat-lbl">👍 好評</div></div>', unsafe_allow_html=True)
+            with c3:
+                st.markdown(f'<div class="stat-box"><div class="stat-num" style="color:#DC2626">{stats.get("bad_count",0)}</div><div class="stat-lbl">👎 悪評</div></div>', unsafe_allow_html=True)
+            st.caption(f"次のアングル: **{angle_name}** ／ 担当AI: **{ai_name}**")
         except Exception:
-            st.info("📊 まだデータなし\n\n使うたびに学習されます")
+            st.info("📊 まだデータなし。使うたびに学習されます")
 
     st.divider()
-    if st.button("テーマを自動生成 →", type="primary", use_container_width=False):
+    if st.button("テーマを自動生成 →", type="primary"):
         st.session_state.sg_script_type = script_type
-
         try:
             from memory_manager import get_used_themes, get_next_angle, get_next_ai, get_rejected_themes
             used_themes = get_used_themes(script_type)
@@ -190,7 +330,7 @@ if step == 0:
                 st.rerun()
             except Exception as e:
                 import traceback
-                st.error(f"エラーが発生しました:\n{e}\n\n{traceback.format_exc()}")
+                st.error(f"エラーが発生しました: {e}\n\nTraceback (most recent call last):\n{traceback.format_exc()}")
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -199,7 +339,8 @@ if step == 0:
 elif step == 1:
     angle_name = st.session_state.sg_current_angle[1]
     _, ai_name = st.session_state.sg_current_ai
-    st.subheader("Step 2: テーマを1〜3個選んでください")
+
+    st.markdown('<div class="section-header">Step 2 ／ テーマを1〜3個選択</div>', unsafe_allow_html=True)
     st.caption(f"アングル: **{angle_name}** ｜ 担当AI: **{ai_name}**")
 
     themes = st.session_state.sg_themes
@@ -215,18 +356,13 @@ elif step == 1:
             placeholder="クリックして選択...",
         )
 
-        # NG登録
         with st.expander("🚫 気に入らないテーマをNG登録する（次回から表示されなくなります）"):
             ng_options = [t for t in themes if t not in selected]
             ng_selected = st.multiselect(
-                "NG登録するテーマを選択",
-                options=ng_options,
-                default=[],
-                key="sg_ng_theme_select",
-                placeholder="気に入らないテーマを選ぶ...",
+                "NG登録するテーマを選択", options=ng_options, default=[],
+                key="sg_ng_theme_select", placeholder="気に入らないテーマを選ぶ...",
             )
-            if st.button("🚫 選択したテーマをNG登録", key="sg_ng_theme_btn",
-                         disabled=not ng_selected):
+            if st.button("🚫 NG登録", key="sg_ng_theme_btn", disabled=not ng_selected):
                 try:
                     from memory_manager import add_rejected_themes
                     add_rejected_themes(ng_selected, st.session_state.sg_script_type)
@@ -234,25 +370,21 @@ elif step == 1:
                 except Exception as e:
                     st.error(f"保存エラー: {e}")
 
-        # カスタムテーマ入力
         with st.expander("✏️ リストにないテーマを直接入力して追加"):
             c1, c2 = st.columns([4, 1])
             with c1:
-                custom_theme = st.text_input(
-                    "カスタムテーマ",
+                custom_theme = st.text_input("カスタムテーマ",
                     placeholder="例：更年期後の筋肉量低下を防ぐ方法",
-                    label_visibility="collapsed",
-                    key="sg_custom_theme_input",
-                )
+                    label_visibility="collapsed", key="sg_custom_theme_input")
             with c2:
-                add_disabled = not custom_theme.strip() or len(selected) >= 3
-                if st.button("＋追加", key="sg_add_theme", disabled=add_disabled):
-                    new_theme = custom_theme.strip()
-                    if new_theme not in st.session_state.sg_themes:
-                        st.session_state.sg_themes.append(new_theme)
+                if st.button("＋追加", key="sg_add_theme",
+                             disabled=not custom_theme.strip() or len(selected) >= 3):
+                    new_t = custom_theme.strip()
+                    if new_t not in st.session_state.sg_themes:
+                        st.session_state.sg_themes.append(new_t)
                     new_sel = list(selected)
-                    if new_theme not in new_sel:
-                        new_sel.append(new_theme)
+                    if new_t not in new_sel:
+                        new_sel.append(new_t)
                     st.session_state.sg_selected_themes = new_sel
                     st.rerun()
             if len(selected) >= 3:
@@ -264,7 +396,7 @@ elif step == 1:
                 st.session_state.sg_step = 0
                 st.rerun()
         with col_regen:
-            if st.button("🔄 再生成", help="別のAIで新しいテーマを生成します"):
+            if st.button("🔄 再生成"):
                 try:
                     from memory_manager import get_used_themes, get_next_angle, get_next_ai, get_rejected_themes
                     used_themes = get_used_themes(st.session_state.sg_script_type)
@@ -285,12 +417,9 @@ elif step == 1:
                         trends, video_trends, youtube_trends = fetch_all_trends()
                         themes = generate_themes(
                             script_type=st.session_state.sg_script_type,
-                            used_themes=used_themes,
-                            rejected_themes=rejected_themes,
-                            trends=trends,
-                            video_trends=video_trends,
-                            youtube_trends=youtube_trends,
-                            angle_name=angle_name,
+                            used_themes=used_themes, rejected_themes=rejected_themes,
+                            trends=trends, video_trends=video_trends,
+                            youtube_trends=youtube_trends, angle_name=angle_name,
                             model=model_id,
                         )
                         st.session_state.sg_themes = themes
@@ -299,15 +428,10 @@ elif step == 1:
                     except Exception as e:
                         st.error(f"エラー: {e}")
         with col_next:
-            if st.button(
-                "アイデア20個を生成 →",
-                type="primary",
-                disabled=len(selected) == 0,
-            ):
+            if st.button("アイデア20個を生成 →", type="primary", disabled=len(selected) == 0):
                 st.session_state.sg_selected_themes = selected
                 angle_name = st.session_state.sg_current_angle[1]
                 model_id = st.session_state.sg_current_ai[0]
-
                 try:
                     from memory_manager import get_good_elements, get_rejected_ideas
                     good_elements = get_good_elements(st.session_state.sg_script_type)
@@ -320,10 +444,8 @@ elif step == 1:
                         from script_crew import generate_ideas
                         ideas = generate_ideas(
                             script_type=st.session_state.sg_script_type,
-                            selected_themes=selected,
-                            angle_name=angle_name,
-                            good_elements=good_elements,
-                            rejected_ideas=rejected_ideas,
+                            selected_themes=selected, angle_name=angle_name,
+                            good_elements=good_elements, rejected_ideas=rejected_ideas,
                             model=model_id,
                         )
                         st.session_state.sg_ideas = ideas
@@ -340,7 +462,8 @@ elif step == 1:
 elif step == 2:
     themes_str = " / ".join(st.session_state.sg_selected_themes)
     _, ai_name = st.session_state.sg_current_ai
-    st.subheader("Step 3: 使いたいアイデアを3個選んでください")
+
+    st.markdown('<div class="section-header">Step 3 ／ アイデアを3個選択</div>', unsafe_allow_html=True)
     st.caption(f"テーマ: **{themes_str}** ｜ 担当AI: **{ai_name}**")
 
     ideas = st.session_state.sg_ideas
@@ -356,18 +479,13 @@ elif step == 2:
             placeholder="クリックして選択...",
         )
 
-        # NG登録
         with st.expander("🚫 気に入らないアイデアをNG登録する（次回から表示されなくなります）"):
             ng_options = [i for i in ideas if i not in selected_ideas]
             ng_selected = st.multiselect(
-                "NG登録するアイデアを選択",
-                options=ng_options,
-                default=[],
-                key="sg_ng_idea_select",
-                placeholder="気に入らないアイデアを選ぶ...",
+                "NG登録するアイデアを選択", options=ng_options, default=[],
+                key="sg_ng_idea_select", placeholder="気に入らないアイデアを選ぶ...",
             )
-            if st.button("🚫 選択したアイデアをNG登録", key="sg_ng_idea_btn",
-                         disabled=not ng_selected):
+            if st.button("🚫 NG登録", key="sg_ng_idea_btn", disabled=not ng_selected):
                 try:
                     from memory_manager import add_rejected_ideas
                     add_rejected_ideas(ng_selected, st.session_state.sg_script_type)
@@ -375,16 +493,12 @@ elif step == 2:
                 except Exception as e:
                     st.error(f"保存エラー: {e}")
 
-        # カスタムアイデア入力
         with st.expander("✏️ リストにないアイデアを直接入力して追加"):
             c1, c2 = st.columns([4, 1])
             with c1:
-                custom_idea = st.text_input(
-                    "カスタムアイデア",
+                custom_idea = st.text_input("カスタムアイデア",
                     placeholder="例：夫に言われた一言で決意した体験談",
-                    label_visibility="collapsed",
-                    key="sg_custom_idea_input",
-                )
+                    label_visibility="collapsed", key="sg_custom_idea_input")
             with c2:
                 add_disabled = not custom_idea.strip() or len(selected_ideas) >= 3
                 if st.button("＋追加", key="sg_add_idea", disabled=add_disabled):
@@ -405,7 +519,7 @@ elif step == 2:
                 st.session_state.sg_step = 1
                 st.rerun()
         with col_regen:
-            if st.button("🔄 再生成", help="別のAIで新しいアイデアを生成します"):
+            if st.button("🔄 再生成"):
                 model_id = st.session_state.sg_current_ai[0]
                 angle_name = st.session_state.sg_current_angle[1]
                 try:
@@ -414,17 +528,14 @@ elif step == 2:
                     rejected_ideas = get_rejected_ideas(st.session_state.sg_script_type)
                 except Exception:
                     good_elements, rejected_ideas = [], []
-
                 with st.spinner("🔄 アイデアを再生成中..."):
                     try:
                         from script_crew import generate_ideas
                         new_ideas = generate_ideas(
                             script_type=st.session_state.sg_script_type,
                             selected_themes=st.session_state.sg_selected_themes,
-                            angle_name=angle_name,
-                            good_elements=good_elements,
-                            rejected_ideas=rejected_ideas,
-                            model=model_id,
+                            angle_name=angle_name, good_elements=good_elements,
+                            rejected_ideas=rejected_ideas, model=model_id,
                         )
                         st.session_state.sg_ideas = new_ideas
                         st.session_state.sg_selected_ideas = []
@@ -432,37 +543,35 @@ elif step == 2:
                     except Exception as e:
                         st.error(f"エラー: {e}")
         with col_next:
-            char_range = "4500〜5000文字" if st.session_state.sg_script_type == "youtube" else "700〜800文字"
-            if st.button(
-                f"台本ドラフトを生成 → （{char_range}）",
-                type="primary",
-                disabled=len(selected_ideas) == 0,
-            ):
+            if st.button("台本を生成 →", type="primary", disabled=len(selected_ideas) == 0):
                 st.session_state.sg_selected_ideas = selected_ideas
                 model_id = st.session_state.sg_current_ai[0]
+                angle_name = st.session_state.sg_current_angle[1]
+                script_type = st.session_state.sg_script_type
+                char_range = "4500〜5000文字" if script_type == "youtube" else "700〜800文字"
 
                 try:
                     from memory_manager import get_good_elements, get_bad_patterns, get_reference_scripts
-                    good_elements = get_good_elements(st.session_state.sg_script_type)
-                    bad_patterns = get_bad_patterns(st.session_state.sg_script_type)
-                    ref_scripts = get_reference_scripts(st.session_state.sg_script_type)
+                    good_elements = get_good_elements(script_type)
+                    bad_patterns = get_bad_patterns(script_type)
+                    ref_scripts = get_reference_scripts(script_type)
                 except Exception:
                     good_elements, bad_patterns, ref_scripts = [], [], []
 
-                with st.spinner(f"台本ドラフトを生成中... ({char_range}) しばらくお待ちください"):
+                with st.spinner(f"台本を生成中... ({char_range})"):
                     try:
                         from script_crew import generate_draft
                         draft = generate_draft(
-                            script_type=st.session_state.sg_script_type,
+                            script_type=script_type,
                             selected_themes=st.session_state.sg_selected_themes,
                             selected_ideas=selected_ideas,
-                            good_elements=good_elements,
-                            bad_patterns=bad_patterns,
-                            ref_scripts=ref_scripts,
-                            model=model_id,
+                            good_elements=good_elements, bad_patterns=bad_patterns,
+                            ref_scripts=ref_scripts, model=model_id,
                         )
                         st.session_state.sg_draft = draft
                         st.session_state.sg_edited_draft = draft
+                        st.session_state.sg_sections = []
+                        st.session_state.sg_section_mode = False
                         st.session_state.sg_step = 3
                         st.rerun()
                     except Exception as e:
@@ -471,197 +580,321 @@ elif step == 2:
 
 
 # ════════════════════════════════════════════════════════════════════
-# Step 3: 台本確認・編集
+# Step 3: 台本作成（テキスト直接編集 ＋ セクションビルダー）
 # ════════════════════════════════════════════════════════════════════
 elif step == 3:
     _, ai_name = st.session_state.sg_current_ai
-    st.subheader("Step 4: 台本を確認・編集してください")
-    st.caption(f"担当AI: **{ai_name}**")
-
-    draft = st.session_state.sg_edited_draft or st.session_state.sg_draft
-
-    edited = st.text_area(
-        "台本（直接編集できます）",
-        value=draft,
-        height=520,
-    )
-
-    # 文字数チェック
-    char_count = len(edited)
     script_type = st.session_state.sg_script_type
+    model_id = st.session_state.sg_current_ai[0]
     target_min, target_max = (4500, 5000) if script_type == "youtube" else (700, 800)
 
-    if char_count < target_min:
-        st.warning(f"文字数: **{char_count}文字** ｜ 目標: {target_min}〜{target_max}文字（あと **{target_min - char_count}文字** 必要）")
-    elif char_count > target_max:
-        st.warning(f"文字数: **{char_count}文字** ｜ 目標: {target_min}〜{target_max}文字（**{char_count - target_max}文字** オーバー）")
-    else:
-        st.success(f"文字数: **{char_count}文字** ｜ 目標範囲内 ({target_min}〜{target_max}文字) ✅")
+    st.markdown('<div class="section-header">Step 4 ／ 台本を確認・調整</div>', unsafe_allow_html=True)
+    st.caption(f"担当AI: **{ai_name}**")
 
-    col_back, col_regen, col_next = st.columns([1, 1, 2])
-    with col_back:
-        if st.button("← 戻る"):
-            st.session_state.sg_step = 2
-            st.rerun()
-    with col_regen:
-        if st.button("🔄 台本を再生成", help="同じアイデアで別パターンの台本を生成します"):
-            model_id = st.session_state.sg_current_ai[0]
-            try:
-                from memory_manager import get_good_elements, get_bad_patterns, get_reference_scripts
-                good_elements = get_good_elements(script_type)
-                bad_patterns = get_bad_patterns(script_type)
-                ref_scripts = get_reference_scripts(script_type)
-            except Exception:
-                good_elements, bad_patterns, ref_scripts = [], [], []
+    # ── モード切り替えタブ ──────────────────────────────────────────
+    tab_edit, tab_builder = st.tabs(["📝 直接編集モード", "🧩 セクション別調整モード"])
 
-            char_range = "4500〜5000文字" if script_type == "youtube" else "700〜800文字"
-            with st.spinner(f"🔄 台本を再生成中... ({char_range})"):
+    # ── 直接編集モード ──────────────────────────────────────────────
+    with tab_edit:
+        draft_val = st.session_state.sg_edited_draft or st.session_state.sg_draft
+        edited = st.text_area(
+            "台本（直接編集できます）",
+            value=draft_val,
+            height=520,
+            key="sg_direct_edit",
+        )
+        char_count = len(edited)
+        if char_count < target_min:
+            st.warning(f"📏 **{char_count}文字** ／ 目標 {target_min}〜{target_max}文字（あと {target_min - char_count}文字必要）")
+        elif char_count > target_max:
+            st.warning(f"📏 **{char_count}文字** ／ 目標 {target_min}〜{target_max}文字（{char_count - target_max}文字オーバー）")
+        else:
+            st.success(f"📏 **{char_count}文字** ／ 目標範囲内 ✅")
+
+        col_back, col_regen, col_next = st.columns([1, 1, 2])
+        with col_back:
+            if st.button("← 戻る", key="tab1_back"):
+                st.session_state.sg_step = 2
+                st.rerun()
+        with col_regen:
+            if st.button("🔄 台本を再生成", key="tab1_regen"):
                 try:
-                    from script_crew import generate_draft
-                    new_draft = generate_draft(
-                        script_type=script_type,
-                        selected_themes=st.session_state.sg_selected_themes,
-                        selected_ideas=st.session_state.sg_selected_ideas,
-                        good_elements=good_elements,
-                        bad_patterns=bad_patterns,
-                        ref_scripts=ref_scripts,
-                        model=model_id,
+                    from memory_manager import get_good_elements, get_bad_patterns, get_reference_scripts
+                    good_elements = get_good_elements(script_type)
+                    bad_patterns = get_bad_patterns(script_type)
+                    ref_scripts = get_reference_scripts(script_type)
+                except Exception:
+                    good_elements, bad_patterns, ref_scripts = [], [], []
+                char_range = "4500〜5000文字" if script_type == "youtube" else "700〜800文字"
+                with st.spinner(f"🔄 台本を再生成中... ({char_range})"):
+                    try:
+                        from script_crew import generate_draft
+                        new_draft = generate_draft(
+                            script_type=script_type,
+                            selected_themes=st.session_state.sg_selected_themes,
+                            selected_ideas=st.session_state.sg_selected_ideas,
+                            good_elements=good_elements, bad_patterns=bad_patterns,
+                            ref_scripts=ref_scripts, model=model_id,
+                        )
+                        st.session_state.sg_draft = new_draft
+                        st.session_state.sg_edited_draft = new_draft
+                        st.session_state.sg_sections = []
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"エラー: {e}")
+        with col_next:
+            if st.button("ファクトチェック → 完成 →", type="primary", key="tab1_next"):
+                st.session_state.sg_edited_draft = edited
+                st.session_state.sg_fc_results = []
+                st.session_state.sg_step = 4
+                st.rerun()
+
+    # ── セクション別調整モード ──────────────────────────────────────
+    with tab_builder:
+        st.caption("台本をセクションに分割し、各部分ごとに5つの候補から選んで台本を組み立てます")
+
+        sections = st.session_state.sg_sections
+
+        # セクション未生成なら生成ボタン
+        if not sections:
+            draft_for_split = st.session_state.sg_edited_draft or st.session_state.sg_draft
+            if st.button("🧩 セクション別候補を生成する（AI分割＋各5候補）", type="primary", key="gen_sections"):
+                with st.spinner("AIが台本をセクションに分割してバリアントを生成中... （少し時間がかかります）"):
+                    try:
+                        import concurrent.futures
+                        from script_crew import split_script_sections, generate_section_variants
+
+                        raw_sections = split_script_sections(draft_for_split, script_type, model_id)
+
+                        def gen(i, sec):
+                            ctx = "\n\n".join(
+                                raw_sections[j]["content"] for j in range(i)
+                            )
+                            variants = generate_section_variants(
+                                sec["name"], sec["content"], ctx, script_type, model_id
+                            )
+                            return i, sec["name"], sec["content"], variants
+
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+                            futures = [ex.submit(gen, i, s) for i, s in enumerate(raw_sections)]
+                            results = sorted(
+                                [f.result() for f in concurrent.futures.as_completed(futures)],
+                                key=lambda x: x[0]
+                            )
+
+                        built = []
+                        for i, name, original, variants in results:
+                            built.append({
+                                "name": name,
+                                "original": original,
+                                "variants": variants,
+                                "selected_idx": 0,
+                            })
+                            # セクションテキストのデフォルト値をセッションに設定
+                            if f"sg_sec_text_{i}" not in st.session_state:
+                                st.session_state[f"sg_sec_text_{i}"] = variants[0] if variants else original
+
+                        st.session_state.sg_sections = built
+                        st.rerun()
+                    except Exception as e:
+                        import traceback
+                        st.error(f"セクション生成エラー: {e}\n{traceback.format_exc()}")
+        else:
+            # セクション選択UI
+            for i, sec in enumerate(sections):
+                st.markdown(
+                    f'<div class="section-header">セクション {i+1}: {sec["name"]}</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # 候補ボタン（5つ横並び）
+                btn_cols = st.columns(5)
+                for j in range(len(sec["variants"])):
+                    with btn_cols[j]:
+                        is_sel = (sec["selected_idx"] == j)
+                        label = f"{'✅ ' if is_sel else ''}候補{j+1}"
+                        if st.button(label, key=f"sg_sec_btn_{i}_{j}",
+                                     type="primary" if is_sel else "secondary",
+                                     use_container_width=True):
+                            st.session_state.sg_sections[i]["selected_idx"] = j
+                            st.session_state[f"sg_sec_text_{i}"] = sec["variants"][j]
+                            st.rerun()
+
+                # 選択中の候補テキストをテキストエリアで表示（直接編集可）
+                # sg_sec_text_i がなければ初期化
+                if f"sg_sec_text_{i}" not in st.session_state:
+                    st.session_state[f"sg_sec_text_{i}"] = (
+                        sec["variants"][sec["selected_idx"]]
+                        if sec["variants"] else sec["original"]
                     )
-                    st.session_state.sg_draft = new_draft
-                    st.session_state.sg_edited_draft = new_draft
+                st.text_area(
+                    f"候補{sec['selected_idx']+1}の内容（直接編集可）",
+                    key=f"sg_sec_text_{i}",
+                    height=120,
+                )
+
+            # 組み上がった台本プレビュー
+            assembled = "\n\n".join(
+                st.session_state.get(f"sg_sec_text_{i}", s["original"])
+                for i, s in enumerate(sections)
+            )
+            char_assembled = len(assembled)
+            st.divider()
+            st.markdown("#### 📄 組み上がった台本プレビュー")
+            if char_assembled < target_min:
+                st.warning(f"📏 **{char_assembled}文字** ／ 目標 {target_min}〜{target_max}文字（あと {target_min - char_assembled}文字）")
+            elif char_assembled > target_max:
+                st.warning(f"📏 **{char_assembled}文字** ／ 目標 {target_min}〜{target_max}文字（{char_assembled - target_max}文字オーバー）")
+            else:
+                st.success(f"📏 **{char_assembled}文字** ／ 目標範囲内 ✅")
+            st.text_area("完成台本", value=assembled, height=300, disabled=True, key="sg_assembled_preview")
+
+            col_reset, col_next = st.columns([1, 2])
+            with col_reset:
+                if st.button("🔄 セクションをリセット", key="reset_sections"):
+                    st.session_state.sg_sections = []
+                    for i in range(10):
+                        st.session_state.pop(f"sg_sec_text_{i}", None)
                     st.rerun()
-                except Exception as e:
-                    st.error(f"エラー: {e}")
-    with col_next:
-        if st.button("ファクトチェック → 完成 →", type="primary"):
-            st.session_state.sg_edited_draft = edited
-            st.session_state.sg_step = 4
-            st.rerun()
+            with col_next:
+                if st.button("この構成で確定 → ファクトチェックへ", type="primary", key="confirm_sections"):
+                    st.session_state.sg_edited_draft = assembled
+                    st.session_state.sg_fc_results = []
+                    st.session_state.sg_step = 4
+                    st.rerun()
 
 
 # ════════════════════════════════════════════════════════════════════
-# Step 4: ファクトチェック + タイトル生成 + 評価
+# Step 4: 4モデル並列ファクトチェック + タイトル生成 + 評価
 # ════════════════════════════════════════════════════════════════════
 elif step == 4:
-    st.subheader("Step 5: ファクトチェック・タイトル生成・評価")
-
     draft = st.session_state.sg_edited_draft
     script_type = st.session_state.sg_script_type
     model_id = st.session_state.sg_current_ai[0]
 
-    if not st.session_state.sg_final_result:
-        st.info("ファクトチェックとタイトル生成を同時実行しています。完了まで2〜3分かかります。")
+    st.markdown('<div class="section-header">Step 5 ／ ファクトチェック・タイトル生成・評価</div>', unsafe_allow_html=True)
 
-        result_holder = {}
-        log_queue_obj: queue.Queue = queue.Queue()
+    # ── ファクトチェック未実施 ──────────────────────────────────────
+    if not st.session_state.sg_fc_results:
+        st.info("4つのAI（Claude・ChatGPT・Gemini・Grok）が並列でファクトチェックを実施します。完了まで2〜3分かかります。")
 
-        class _StdoutCapture(StringIO):
-            def write(self, text: str):
-                stripped = text.strip()
-                if stripped:
-                    log_queue_obj.put(stripped)
-                return super().write(text)
+        col_back_fc, col_start_fc = st.columns([1, 3])
+        with col_back_fc:
+            if st.button("← 戻る"):
+                st.session_state.sg_step = 3
+                st.rerun()
+        with col_start_fc:
+            if st.button("🔍 ファクトチェック＋タイトル生成を開始", type="primary"):
+                result_holder = {}
 
-        def _run_factcheck():
-            old_stdout = sys.stdout
-            sys.stdout = _StdoutCapture()
-            try:
-                from crew import FactCheckCrew
-                result = FactCheckCrew().run(text=draft)
-                result_holder["result"] = str(result)
-            except Exception as e:
-                import traceback
-                result_holder["error"] = str(e) + "\n\n" + traceback.format_exc()
-            finally:
-                sys.stdout = old_stdout
+                def _run_fc():
+                    try:
+                        from script_crew import factcheck_parallel
+                        result_holder["fc"] = factcheck_parallel(draft)
+                    except Exception as e:
+                        result_holder["fc_error"] = str(e)
 
-        def _run_titles():
-            try:
-                from script_crew import generate_titles
-                titles = generate_titles(draft=draft, script_type=script_type, model=model_id)
-                result_holder["titles"] = titles
-            except Exception as e:
-                result_holder["titles"] = f"（タイトル生成エラー: {e}）"
+                def _run_titles():
+                    try:
+                        from script_crew import generate_titles
+                        result_holder["titles"] = generate_titles(
+                            draft=draft, script_type=script_type, model=model_id
+                        )
+                    except Exception as e:
+                        result_holder["titles"] = f"（タイトル生成エラー: {e}）"
 
-        thread_fc = threading.Thread(target=_run_factcheck, daemon=True)
-        thread_titles = threading.Thread(target=_run_titles, daemon=True)
-        thread_fc.start()
-        thread_titles.start()
+                t_fc = threading.Thread(target=_run_fc, daemon=True)
+                t_ti = threading.Thread(target=_run_titles, daemon=True)
+                t_fc.start(); t_ti.start()
 
-        status_area = st.empty()
-        log_area = st.empty()
-        log_lines = []
+                prog = st.progress(0)
+                status = st.empty()
+                elapsed = 0
+                while t_fc.is_alive() or t_ti.is_alive():
+                    elapsed += 1
+                    pct = min(90, elapsed * 3)
+                    prog.progress(pct)
+                    fc_s = "⚙️ 実行中" if t_fc.is_alive() else "✅ 完了"
+                    ti_s = "⚙️ 実行中" if t_ti.is_alive() else "✅ 完了"
+                    status.info(f"ファクトチェック: **{fc_s}** ｜ タイトル生成: **{ti_s}**")
+                    time.sleep(1)
+                t_fc.join(); t_ti.join()
+                prog.progress(100)
+                status.empty()
 
-        while thread_fc.is_alive() or thread_titles.is_alive():
-            while not log_queue_obj.empty():
-                line = log_queue_obj.get()
-                if line.startswith(("│", "╭", "╰", "╮")):
-                    inner = line.strip("│╭╰╮─ \t")
-                    if inner:
-                        log_lines.append(inner)
+                if "fc_error" in result_holder:
+                    st.error(f"ファクトチェックエラー: {result_holder['fc_error']}")
                 else:
-                    log_lines.append(line)
-                log_area.code("\n".join(log_lines[-25:]), language=None)
-
-            fc_status = "⚙️ 処理中" if thread_fc.is_alive() else "✅ 完了"
-            ti_status = "⚙️ 処理中" if thread_titles.is_alive() else "✅ 完了"
-            status_area.info(
-                f"ファクトチェック: **{fc_status}** ｜ タイトル生成: **{ti_status}**"
-            )
-            time.sleep(1)
-
-        thread_fc.join()
-        thread_titles.join()
-        log_area.empty()
-        status_area.empty()
-
-        if "error" in result_holder:
-            st.error(f"ファクトチェックエラー:\n{result_holder['error']}")
-            col_back2, _ = st.columns([1, 3])
-            with col_back2:
-                if st.button("← 戻る"):
-                    st.session_state.sg_step = 3
+                    st.session_state.sg_fc_results = result_holder.get("fc", [])
+                    st.session_state.sg_titles = result_holder.get("titles", "")
                     st.rerun()
-        else:
-            st.session_state.sg_final_result = result_holder.get("result", "")
-            st.session_state.sg_titles = result_holder.get("titles", "")
-            st.rerun()
 
+    # ── ファクトチェック完了 ─────────────────────────────────────────
     else:
-        final_script = st.session_state.sg_edited_draft
-        final_result = st.session_state.sg_final_result
-        titles = st.session_state.sg_titles
         _, ai_name = st.session_state.sg_current_ai
+        final_script = st.session_state.sg_edited_draft
+        titles = st.session_state.sg_titles
+        fc_results = st.session_state.sg_fc_results
 
-        st.caption(f"担当AI: **{ai_name}**")
-
+        # タイトル候補
         if titles:
             with st.expander("🎯 タイトル候補・サムネイルテキスト案", expanded=True):
                 st.markdown(titles)
 
-        with st.expander("📊 ファクトチェック結果", expanded=False):
-            for line in final_result.split("\n"):
-                if "✅" in line:
-                    st.success(line)
-                elif "❌" in line:
-                    st.error(line)
-                elif "⚠️" in line:
-                    st.warning(line)
-                elif line.startswith("#"):
-                    st.markdown(line)
-                else:
-                    if line.strip():
-                        st.write(line)
+        # ─ ファクトチェック 4カラム ─
+        st.markdown("### 🔍 ファクトチェック結果（4AI並列）")
+
+        MODEL_COLORS = {
+            "Claude Sonnet 4.6": "#7C3AED",
+            "ChatGPT (GPT-4o)":  "#059669",
+            "Gemini 1.5 Pro":    "#1D4ED8",
+            "Grok 2":            "#111827",
+        }
+        VERDICT_ICON = {"✅": "verdict-good", "⚠️": "verdict-warn", "❌": "verdict-bad"}
+
+        fc_cols = st.columns(len(fc_results) if fc_results else 4)
+        for col, res in zip(fc_cols, fc_results):
+            if res is None:
+                continue
+            color = MODEL_COLORS.get(res.get("model_name", ""), "#4F46E5")
+            icon = res.get("icon", "🤖")
+            verdict = res.get("verdict", "❓")
+            v_cls = VERDICT_ICON.get(verdict, "verdict-unk")
+
+            with col:
+                st.markdown(
+                    f'<div style="border:1px solid {color}20;border-top:4px solid {color};'
+                    f'border-radius:10px;padding:14px 12px;background:white;">'
+                    f'<div style="font-weight:700;font-size:0.9rem;margin-bottom:6px;">'
+                    f'{icon} {res.get("model_name","")}</div>'
+                    f'<div class="{v_cls}" style="font-size:1.3rem;margin-bottom:8px;">{verdict}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                if res.get("error"):
+                    st.error(f"エラー: {res['error']}")
+                elif res.get("text"):
+                    with st.expander("詳細を見る"):
+                        # 判定ごとに色分け
+                        for line in res["text"].split("\n"):
+                            if "✅" in line:
+                                st.success(line)
+                            elif "❌" in line:
+                                st.error(line)
+                            elif "⚠️" in line:
+                                st.warning(line)
+                            elif line.startswith("#"):
+                                st.markdown(line)
+                            elif line.strip():
+                                st.write(line)
 
         st.divider()
-        st.subheader("完成台本")
-        char_count = len(final_script)
-        st.caption(f"文字数: {char_count}文字")
-        st.text_area("完成台本", value=final_script, height=400, disabled=True,
-                     key="sg_final_textarea")
 
-        # コピーボタン
-        st.code(final_script, language=None)
+        # ─ 完成台本 ─
+        st.markdown("### 📄 完成台本")
+        char_count = len(final_script)
+        st.caption(f"文字数: **{char_count}文字** ｜ 担当AI: **{ai_name}**")
+        st.text_area("完成台本", value=final_script, height=400, disabled=True, key="sg_final_textarea")
 
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         col_dl1, col_dl2 = st.columns(2)
@@ -670,34 +903,31 @@ elif step == 4:
                 "📥 台本をダウンロード",
                 data=final_script,
                 file_name=f"script_{script_type}_{ts}.txt",
-                mime="text/plain",
-                use_container_width=True,
+                mime="text/plain", use_container_width=True,
             )
         with col_dl2:
-            combined = (
-                f"=== 完成台本 ===\n{final_script}\n\n"
-                f"=== タイトル・サムネイル案 ===\n{titles}\n\n"
-                f"=== ファクトチェック結果 ===\n{final_result}"
+            fc_text = "\n\n".join(
+                f"=== {r.get('model_name','')} ===\n{r.get('text','')}"
+                for r in fc_results if r
             )
+            combined = f"=== 完成台本 ===\n{final_script}\n\n=== タイトル・サムネイル案 ===\n{titles}\n\n=== ファクトチェック結果 ===\n{fc_text}"
             st.download_button(
                 "📥 全データをダウンロード",
                 data=combined,
                 file_name=f"script_full_{script_type}_{ts}.txt",
-                mime="text/plain",
-                use_container_width=True,
+                mime="text/plain", use_container_width=True,
             )
 
         st.divider()
 
+        # ─ 評価フロー ─
         theme = (st.session_state.sg_selected_themes[0]
                  if st.session_state.sg_selected_themes else "不明")
         angle_key = st.session_state.sg_current_angle[0]
-        model_id = st.session_state.sg_current_ai[0]
         rating_mode = st.session_state.sg_rating_mode
 
-        # ── 評価ボタン（未評価時のみ表示）─────────────────────────
         if rating_mode is None:
-            st.subheader("この台本を評価してください")
+            st.markdown("### ⭐ この台本を評価してください")
             st.caption("評価結果をAIが分析し、次回の生成に自動反映されます")
             col_good, col_bad = st.columns(2)
             with col_good:
@@ -709,7 +939,6 @@ elif step == 4:
                     st.session_state.sg_rating_mode = "bad"
                     st.rerun()
 
-        # ── 👍 好評フロー：AI分析 → 保存 ──────────────────────────
         elif rating_mode == "good":
             if not st.session_state.sg_learned_elements:
                 with st.spinner("🔍 台本の好評ポイントをAIが分析中..."):
@@ -718,14 +947,12 @@ elif step == 4:
                         elements = analyze_good_elements(final_script, script_type, model_id)
                     except Exception:
                         elements = []
-                    # 台本を保存 + 好評要素を記録
                     try:
                         from memory_manager import save_script, record_theme_used
                         from memory_manager import _load_history, _save_history, _type_data, ANGLE_NAMES
                         save_script(script=final_script, rating="good", theme=theme,
                                     script_type=script_type, angle=angle_key)
                         record_theme_used(theme=theme, script_type=script_type, angle=angle_key)
-                        # AI抽出要素を追加保存
                         if elements:
                             history = _load_history()
                             td = _type_data(history, script_type)
@@ -746,33 +973,23 @@ elif step == 4:
                     st.info("**📚 今回学習した好評ポイント（次回から参考にされます）**\n\n" +
                             "\n".join(f"・{e}" for e in elements))
 
-        # ── 👎 悪評フロー：NG登録フォーム → 保存 ────────────────────
         elif rating_mode == "bad":
             if not st.session_state.sg_saved:
-                st.subheader("改善フィードバック")
+                st.markdown("### 改善フィードバック")
                 st.caption("何が問題だったか教えてください。次回の生成に反映されます")
-
-                # NGテーマ選択
                 ng_themes = st.multiselect(
-                    "🚫 NGにするテーマ（次回は生成されなくなります）",
-                    options=st.session_state.sg_selected_themes,
-                    default=[],
-                    key="sg_bad_ng_themes",
+                    "🚫 NGにするテーマ", options=st.session_state.sg_selected_themes,
+                    default=[], key="sg_bad_ng_themes",
                 )
-                # NGアイデア選択
                 ng_ideas = st.multiselect(
-                    "🚫 NGにするアイデア（次回は生成されなくなります）",
-                    options=st.session_state.sg_selected_ideas or [],
-                    default=[],
-                    key="sg_bad_ng_ideas",
+                    "🚫 NGにするアイデア", options=st.session_state.sg_selected_ideas or [],
+                    default=[], key="sg_bad_ng_ideas",
                 )
-                # 自由コメント
                 bad_note = st.text_input(
                     "💬 悪かった点を一言で（任意）",
                     placeholder="例：感情訴求が弱かった、情報が古かった など",
                     key="sg_bad_note",
                 )
-
                 if st.button("💾 フィードバックを保存して学習させる", type="primary"):
                     with st.spinner("🔍 AIが改善パターンを分析中..."):
                         try:
@@ -780,7 +997,6 @@ elif step == 4:
                             pattern = analyze_bad_pattern(final_script, script_type, bad_note, model_id)
                         except Exception:
                             pattern = bad_note if bad_note else ""
-
                         try:
                             from memory_manager import (save_script, record_theme_used,
                                 add_rejected_themes, add_rejected_ideas,
@@ -792,7 +1008,6 @@ elif step == 4:
                                 add_rejected_themes(ng_themes, script_type)
                             if ng_ideas:
                                 add_rejected_ideas(ng_ideas, script_type)
-                            # AI分析パターンを bad_patterns に追加
                             if pattern:
                                 history = _load_history()
                                 td = _type_data(history, script_type)
@@ -802,7 +1017,6 @@ elif step == 4:
                                 _save_history(history)
                         except Exception as e:
                             st.error(f"保存エラー: {e}")
-
                     st.session_state.sg_learned_pattern = pattern
                     st.session_state.sg_saved = True
                     st.rerun()
@@ -811,12 +1025,8 @@ elif step == 4:
                 if st.session_state.sg_learned_pattern:
                     st.info(f"**📚 学習した改善パターン：** {st.session_state.sg_learned_pattern}")
 
-        # ── 評価完了後の共通表示 ──────────────────────────────────
-        if rating_mode == "done" or st.session_state.sg_saved:
-            pass  # 上の各ブランチで表示済み
-
         st.divider()
-        if st.button("🔄 新しい台本を生成する", type="secondary", use_container_width=False):
+        if st.button("🔄 新しい台本を生成する", type="secondary"):
             reset_all()
             st.rerun()
 

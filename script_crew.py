@@ -352,6 +352,146 @@ def generate_titles(draft: str, script_type: str,
     return _call_llm(prompt, model=model, temperature=0.8, max_tokens=1000)
 
 
+# ── セクション別台本ビルダー ──────────────────────────────────────────
+
+REEL_SECTIONS = ["冒頭フック", "共感・問題提起", "権威・解決策提示", "メインコンテンツ", "行動喚起（CTA）"]
+YOUTUBE_SECTIONS = ["オープニング", "問題提起・共感", "権威・概要説明", "解説①", "解説②", "解説③", "まとめ・CTA"]
+
+
+def split_script_sections(script: str, script_type: str,
+                          model: str = "anthropic/claude-sonnet-4-6") -> list:
+    """台本をセクション名ごとに分割してリストで返す"""
+    sections = REEL_SECTIONS if script_type == "reel" else YOUTUBE_SECTIONS
+    sections_str = "\n".join(f"{i+1}. {s}" for i, s in enumerate(sections))
+    prompt = f"""以下の台本を、指定のセクション名ごとに分割してください。
+各セクションの内容をそのまま抜き出してください（加工しない）。
+
+【セクション名（必ずこの順序で）】
+{sections_str}
+
+【台本】
+{script}
+
+【出力形式】各セクションを以下の区切り文字で分けて出力：
+===SECTION: セクション名===
+セクション本文
+===END===
+
+全セクション分出力してください。内容が空でも必ず出力してください。"""
+    try:
+        text = _call_llm(prompt, model=model, temperature=0.1, max_tokens=5000)
+        result = []
+        import re
+        blocks = re.findall(r'===SECTION: (.+?)===\s*(.*?)\s*===END===', text, re.DOTALL)
+        for name, content in blocks:
+            result.append({"name": name.strip(), "content": content.strip()})
+        # 見つからなかったセクションは空で補完
+        found_names = {r["name"] for r in result}
+        for s in sections:
+            if s not in found_names:
+                result.append({"name": s, "content": ""})
+        return result
+    except Exception:
+        # 分割失敗時はシンプルに均等分割
+        lines = script.split("\n")
+        chunk = max(1, len(lines) // len(sections))
+        return [{"name": s, "content": "\n".join(lines[i*chunk:(i+1)*chunk])}
+                for i, s in enumerate(sections)]
+
+
+def generate_section_variants(section_name: str, section_content: str,
+                              context_before: str, script_type: str,
+                              model: str = "anthropic/claude-sonnet-4-6",
+                              n: int = 5) -> list:
+    """セクションの5つの候補バリアントを1回のLLM呼び出しで生成"""
+    type_name = "リール台本（700〜800文字全体）" if script_type == "reel" else "YouTube台本（4500〜5000文字全体）"
+    context_str = f"\n【直前のセクション（文脈）】\n{context_before[-400:]}\n" if context_before else ""
+
+    prompt = f"""あなたは{type_name}のプロのライターです。
+以下のセクション「{section_name}」に対して、{n}つの異なる候補を作成してください。{context_str}
+【現在のセクション内容（参考）】
+{section_content}
+
+【ルール】
+- 各候補は「候補1:」「候補2:」...「候補{n}:」で始める
+- 各候補は改行で分けてすぐ内容を書く（見出しや説明は不要）
+- スタイルや切り口を変えて{n}パターン作る
+- {type_name}全体の文字数バランスを考慮した分量にする
+- 台本本文のみ（ト書きなし）
+
+候補1:から候補{n}:の順に出力してください。"""
+    try:
+        text = _call_llm(prompt, model=model, temperature=0.85, max_tokens=3000)
+        import re
+        pattern = r'候補\d+[:：]\s*(.*?)(?=候補\d+[:：]|$)'
+        matches = re.findall(pattern, text, re.DOTALL)
+        variants = [m.strip() for m in matches if m.strip()]
+        # 足りない場合は元のコンテンツで補完
+        while len(variants) < n:
+            variants.append(section_content)
+        return variants[:n]
+    except Exception:
+        return [section_content] * n
+
+
+# ── 4モデル並列ファクトチェック ────────────────────────────────────────
+
+FC_MODELS = [
+    ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6", "🟣"),
+    ("gpt-4o",                      "ChatGPT (GPT-4o)",  "🟢"),
+    ("gemini/gemini-1.5-pro",        "Gemini 1.5 Pro",    "🔵"),
+    ("xai/grok-2",                   "Grok 2",            "⚫"),
+]
+
+FC_PROMPT_TEMPLATE = """あなたは優秀なファクトチェッカーです。以下の台本に含まれる事実的な主張を検証してください。
+
+【台本】
+{script}
+
+【出力形式（必ずこの形式で）】
+## 総合判定: [✅ 概ね正確 / ⚠️ 一部要注意 / ❌ 問題あり]
+
+## 検証結果
+各主張について:
+### 主張: [主張内容を短く]
+- 判定: ✅正確 / ⚠️要注意 / ❌誤り
+- 根拠: [確認した内容]
+- 修正案: [問題ある場合のみ]
+
+## 総評（2〜3文）"""
+
+
+def factcheck_with_model(script: str, model: str, model_name: str) -> dict:
+    """単一モデルでファクトチェックを実行"""
+    prompt = FC_PROMPT_TEMPLATE.format(script=script[:3000])
+    try:
+        text = _call_llm(prompt, model=model, temperature=0.2, max_tokens=2000)
+        # 総合判定を抽出
+        import re
+        m = re.search(r'総合判定.*?(✅|⚠️|❌)', text)
+        verdict = m.group(1) if m else "❓"
+        return {"model_name": model_name, "verdict": verdict, "text": text, "error": None}
+    except Exception as e:
+        return {"model_name": model_name, "verdict": "❓", "text": "", "error": str(e)}
+
+
+def factcheck_parallel(script: str) -> list:
+    """4モデルを並列実行してファクトチェック結果リストを返す"""
+    import concurrent.futures
+    results = [None] * len(FC_MODELS)
+
+    def _run(idx, model_id, model_name, icon):
+        r = factcheck_with_model(script, model_id, model_name)
+        r["icon"] = icon
+        results[idx] = r
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        futures = [ex.submit(_run, i, mid, mname, icon)
+                   for i, (mid, mname, icon) in enumerate(FC_MODELS)]
+        concurrent.futures.wait(futures)
+    return results
+
+
 # ── 台本の評価・分析 ──────────────────────────────────────────────────
 
 def analyze_good_elements(script: str, script_type: str, model: str) -> list:
