@@ -408,14 +408,22 @@ def generate_section_variants(section_name: str, section_content: str,
     context_str = f"\n【直前のセクション（文脈）】\n{context_before[-400:]}\n" if context_before else ""
 
     prompt = f"""あなたは{type_name}のプロのライターです。
-以下のセクション「{section_name}」に対して、{n}つの異なる候補を作成してください。{context_str}
+以下のセクション「{section_name}」に対して、{n}つの【まったく異なるアプローチ】の候補を作成してください。{context_str}
 【現在のセクション内容（参考）】
 {section_content}
 
-【ルール】
+【最重要ルール：候補の多様性】
+各候補は以下のように、切り口・トーン・構成を根本的に変えてください：
+- 候補1: データ・数字・科学的根拠を前面に出す理性的アプローチ
+- 候補2: 体験談・ストーリー・感情に訴えかける共感アプローチ
+- 候補3: 常識を覆す・意外性で引き込む逆説アプローチ
+- 候補4: 問いかけ・対話形式で読者を巻き込むインタラクティブアプローチ
+- 候補5: 緊急性・危機感を煽って行動を促す切迫アプローチ
+
+【出力ルール】
 - 各候補は「候補1:」「候補2:」...「候補{n}:」で始める
 - 各候補は改行で分けてすぐ内容を書く（見出しや説明は不要）
-- スタイルや切り口を変えて{n}パターン作る
+- 似たような表現・同じ書き出し・同じ構成は絶対に避ける
 - {type_name}全体の文字数バランスを考慮した分量にする
 - 台本本文のみ（ト書きなし）
 
@@ -439,7 +447,7 @@ def generate_section_variants(section_name: str, section_content: str,
 FC_MODELS = [
     ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6",   "🟣"),
     ("gpt-4o",                      "ChatGPT (GPT-4o)",    "🟢"),
-    ("gemini/gemini-2.0-flash",     "Gemini 2.0 Flash",    "🔵"),
+    ("gemini/gemini-2.5-flash-preview-04-17", "Gemini 2.5 Flash", "🔵"),
     ("xai/grok-3-mini",             "Grok 3 Mini",         "⚫"),
 ]
 

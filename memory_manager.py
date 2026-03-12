@@ -22,12 +22,76 @@ ANGLE_NAMES = {
 AI_ROTATION = [
     ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"),
     ("openai/gpt-4o", "GPT-4o"),
-    ("gemini/gemini-1.5-pro", "Gemini 1.5 Pro"),
-    ("xai/grok-2", "Grok 2"),
+    ("gemini/gemini-2.5-flash-preview-04-17", "Gemini 2.5 Flash"),
+    ("xai/grok-3-mini", "Grok 3 Mini"),
 ]
 
 SCRIPT_TYPES = ["youtube", "reel"]
 
+# ── Supabase クラウドストレージ ─────────────────────────────────────────
+# SUPABASE_URL と SUPABASE_KEY が設定されていればSupabaseを使う
+# 未設定ならローカルファイル（history.json）にフォールバック
+
+_supabase_client = None
+_supabase_checked = False
+SUPABASE_TABLE = "script_memory"  # テーブル名
+
+def _get_supabase():
+    """Supabaseクライアントを取得（未設定ならNone）"""
+    global _supabase_client, _supabase_checked
+    if _supabase_checked:
+        return _supabase_client
+    _supabase_checked = True
+    try:
+        url = os.environ.get("SUPABASE_URL", "")
+        key = os.environ.get("SUPABASE_KEY", "")
+        if not url or not key:
+            # Streamlit secretsから取得を試みる
+            try:
+                import streamlit as st
+                url = url or st.secrets.get("SUPABASE_URL", "")
+                key = key or st.secrets.get("SUPABASE_KEY", "")
+            except Exception:
+                pass
+        if url and key:
+            from supabase import create_client
+            _supabase_client = create_client(url, key)
+    except Exception:
+        _supabase_client = None
+    return _supabase_client
+
+
+def _load_from_supabase() -> dict | None:
+    """Supabaseからhistoryデータを読み込む（失敗時はNone）"""
+    sb = _get_supabase()
+    if not sb:
+        return None
+    try:
+        resp = sb.table(SUPABASE_TABLE).select("data").eq("id", "history").execute()
+        if resp.data and len(resp.data) > 0:
+            return resp.data[0]["data"]
+        return {}
+    except Exception:
+        return None
+
+
+def _save_to_supabase(data: dict) -> bool:
+    """Supabaseにhistoryデータを保存（成功時True）"""
+    sb = _get_supabase()
+    if not sb:
+        return False
+    try:
+        sb.table(SUPABASE_TABLE).upsert({
+            "id": "history",
+            "data": data,
+            "updated_at": datetime.now().isoformat(),
+        }).execute()
+        return True
+    except Exception:
+        return False
+
+
+# ── ローカルファイル操作 ────────────────────────────────────────────────
 
 def _ensure_dirs():
     GOOD_DIR.mkdir(parents=True, exist_ok=True)
@@ -49,15 +113,27 @@ def _default_type_data() -> dict:
 
 
 def _load_history() -> dict:
-    _ensure_dirs()
-    if HISTORY_FILE.exists():
-        with open(HISTORY_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-        # 旧フォーマット（フラット構造）を新フォーマットへ移行
-        if "youtube" not in data and "reel" not in data:
-            data = _migrate_legacy(data)
+    """履歴データを読み込む（Supabase優先、なければローカルファイル）"""
+    # 1) Supabaseを試す
+    cloud_data = _load_from_supabase()
+    if cloud_data is not None:
+        data = cloud_data
     else:
-        data = {}
+        # 2) ローカルファイルにフォールバック
+        _ensure_dirs()
+        if HISTORY_FILE.exists():
+            try:
+                with open(HISTORY_FILE, encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                data = {}
+        else:
+            data = {}
+
+    # 旧フォーマット（フラット構造）を新フォーマットへ移行
+    if data and "youtube" not in data and "reel" not in data:
+        data = _migrate_legacy(data)
+
     # 不足キーを補完
     for t in SCRIPT_TYPES:
         if t not in data:
@@ -73,7 +149,6 @@ def _migrate_legacy(old: dict) -> dict:
     new = {}
     for t in SCRIPT_TYPES:
         new[t] = _default_type_data()
-    # 旧データはすべて youtube に引き継ぐ
     new["youtube"]["used_themes"] = old.get("used_themes", [])
     new["youtube"]["next_angle_index"] = old.get("next_angle_index", 0)
     new["youtube"]["next_ai_index"] = old.get("next_ai_index", 0)
@@ -86,9 +161,17 @@ def _migrate_legacy(old: dict) -> dict:
 
 
 def _save_history(data: dict):
+    """履歴データを保存（Supabase優先、なければローカルファイル）"""
+    # 1) Supabaseに保存を試みる
+    if _save_to_supabase(data):
+        return
+    # 2) ローカルファイルにフォールバック
     _ensure_dirs()
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    try:
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
 
 
 def _type_data(history: dict, script_type: str) -> dict:
@@ -150,7 +233,6 @@ def get_reference_scripts(script_type: str, n: int = 3) -> list:
     import random
     _ensure_dirs()
     files = list(GOOD_DIR.glob(f"{script_type}_*.txt"))
-    # 内容が空でないファイルだけ対象にする
     valid = []
     for f in files:
         try:
@@ -163,7 +245,6 @@ def get_reference_scripts(script_type: str, n: int = 3) -> list:
                 valid.append((f, body))
         except Exception:
             pass
-    # ランダムにn件選ぶ
     chosen = random.sample(valid, min(n, len(valid)))
     return [body for _, body in chosen]
 
@@ -223,12 +304,15 @@ def save_script(script: str, rating: str, theme: str, script_type: str, angle: s
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{script_type}_{ts}.txt"
     target_dir = GOOD_DIR if rating == "good" else BAD_DIR
-    with open(target_dir / filename, "w", encoding="utf-8") as f:
-        f.write(f"# テーマ: {theme}\n")
-        f.write(f"# タイプ: {script_type}\n")
-        f.write(f"# アングル: {angle}\n")
-        f.write(f"# 評価: {rating}\n\n")
-        f.write(script)
+    try:
+        with open(target_dir / filename, "w", encoding="utf-8") as f:
+            f.write(f"# テーマ: {theme}\n")
+            f.write(f"# タイプ: {script_type}\n")
+            f.write(f"# アングル: {angle}\n")
+            f.write(f"# 評価: {rating}\n\n")
+            f.write(script)
+    except Exception:
+        pass  # Streamlit Cloudではファイル書き込みが失敗する可能性
 
     history = _load_history()
     td = _type_data(history, script_type)
@@ -266,11 +350,9 @@ def record_theme_used(theme: str, script_type: str, angle: str):
     stats = td.setdefault("stats", {})
     stats["total_generated"] = stats.get("total_generated", 0) + 1
 
-    # アングルを次に進める（タイプ別）
     idx = td.get("next_angle_index", 0)
     td["next_angle_index"] = (idx + 1) % len(ANGLE_ROTATION)
 
-    # AIを次に進める（タイプ別）
     ai_idx = td.get("next_ai_index", 0)
     td["next_ai_index"] = (ai_idx + 1) % len(AI_ROTATION)
 
@@ -282,30 +364,32 @@ def get_all_scripts_for_history() -> list:
     _ensure_dirs()
     scripts = []
     for rating, folder in [("good", GOOD_DIR), ("bad", BAD_DIR)]:
-        for f in sorted(folder.glob("*.txt"), key=lambda x: x.stat().st_mtime, reverse=True):
-            meta = {"filename": f.name, "rating": rating, "path": str(f),
-                    "theme": "", "script_type": "", "angle": "", "date": ""}
-            try:
-                with open(f, encoding="utf-8") as fp:
-                    for line in fp:
-                        if line.startswith("# テーマ:"):
-                            meta["theme"] = line.replace("# テーマ:", "").strip()
-                        elif line.startswith("# タイプ:"):
-                            meta["script_type"] = line.replace("# タイプ:", "").strip()
-                        elif line.startswith("# アングル:"):
-                            meta["angle"] = line.replace("# アングル:", "").strip()
-                        elif not line.startswith("#") and line.strip():
-                            break
-            except Exception:
-                pass
-            # ファイル名から日時を取得
-            parts = f.stem.split("_")
-            if len(parts) >= 3:
+        try:
+            for f in sorted(folder.glob("*.txt"), key=lambda x: x.stat().st_mtime, reverse=True):
+                meta = {"filename": f.name, "rating": rating, "path": str(f),
+                        "theme": "", "script_type": "", "angle": "", "date": ""}
                 try:
-                    meta["date"] = datetime.strptime(
-                        f"{parts[1]}_{parts[2]}", "%Y%m%d_%H%M%S"
-                    ).strftime("%Y/%m/%d %H:%M")
+                    with open(f, encoding="utf-8") as fp:
+                        for line in fp:
+                            if line.startswith("# テーマ:"):
+                                meta["theme"] = line.replace("# テーマ:", "").strip()
+                            elif line.startswith("# タイプ:"):
+                                meta["script_type"] = line.replace("# タイプ:", "").strip()
+                            elif line.startswith("# アングル:"):
+                                meta["angle"] = line.replace("# アングル:", "").strip()
+                            elif not line.startswith("#") and line.strip():
+                                break
                 except Exception:
-                    meta["date"] = ""
-            scripts.append(meta)
+                    pass
+                parts = f.stem.split("_")
+                if len(parts) >= 3:
+                    try:
+                        meta["date"] = datetime.strptime(
+                            f"{parts[1]}_{parts[2]}", "%Y%m%d_%H%M%S"
+                        ).strftime("%Y/%m/%d %H:%M")
+                    except Exception:
+                        meta["date"] = ""
+                scripts.append(meta)
+        except Exception:
+            pass
     return scripts

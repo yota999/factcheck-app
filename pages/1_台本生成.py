@@ -271,13 +271,35 @@ section[data-testid="stSidebar"] .stMarkdown {
     overflow: visible !important;
     text-overflow: unset !important;
     height: auto !important;
-    padding: 12px 16px !important;
-    line-height: 1.6 !important;
-    border-bottom: 1px solid #F3F4F6;
+    padding: 14px 18px !important;
+    line-height: 1.7 !important;
+    border-bottom: none !important;
     transition: background .1s;
+    font-size: 0.9rem !important;
+}
+[data-baseweb="menu"] li:nth-child(odd) {
+    background: #F5F3FF !important;
+}
+[data-baseweb="menu"] li:nth-child(even) {
+    background: white !important;
 }
 [data-baseweb="menu"] li:hover {
     background: #EEF2FF !important;
+    box-shadow: inset 3px 0 0 #4F46E5;
+}
+
+/* ═══ マルチセレクト選択済みタグ全文表示 ═══ */
+div[data-testid="stMultiSelect"] span[data-baseweb="tag"] {
+    max-width: 100% !important;
+    white-space: normal !important;
+    height: auto !important;
+    padding: 6px 10px !important;
+    line-height: 1.5 !important;
+}
+div[data-testid="stMultiSelect"] span[data-baseweb="tag"] span {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
 }
 
 /* ═══ ラジオボタンを候補カード風に ═══ */
@@ -714,20 +736,35 @@ elif step == 1:
 </div>''', unsafe_allow_html=True)
 
     themes = st.session_state.sg_themes
+    CIRCLE_NUMS_T = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+    import re as _re_theme
+    def _strip_num_t(text):
+        return _re_theme.sub(r'^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]\s*', '', text)
+    def _add_num_t(lst):
+        result = []
+        for idx, item in enumerate(lst):
+            clean = _strip_num_t(item)
+            if idx < len(CIRCLE_NUMS_T):
+                result.append(f"{CIRCLE_NUMS_T[idx]} {clean}")
+            else:
+                result.append(clean)
+        return result
+    display_themes = _add_num_t(themes)
 
     if not themes:
         st.error("テーマ生成に失敗しました。戻って再試行してください。")
     else:
         selected = st.multiselect(
             "テーマを1〜3個選択（複数選択可）",
-            options=themes,
-            default=st.session_state.sg_selected_themes or [],
+            options=display_themes,
+            default=[d for d in _add_num_t(st.session_state.sg_selected_themes or [])
+                     if d in display_themes],
             max_selections=3,
             placeholder="クリックしてテーマを選択...",
         )
 
         with st.expander("🚫 気に入らないテーマをNG登録する（次回から非表示に）"):
-            ng_options = [t for t in themes if t not in selected]
+            ng_options = [t for t in display_themes if t not in selected]
             ng_selected = st.multiselect(
                 "NG登録するテーマを選択", options=ng_options, default=[],
                 key="sg_ng_theme_select", placeholder="気に入らないテーマを選ぶ...",
@@ -735,7 +772,8 @@ elif step == 1:
             if st.button("🚫 NG登録する", key="sg_ng_theme_btn", disabled=not ng_selected):
                 try:
                     from memory_manager import add_rejected_themes
-                    add_rejected_themes(ng_selected, st.session_state.sg_script_type)
+                    add_rejected_themes([_strip_num_t(x) for x in ng_selected],
+                                        st.session_state.sg_script_type)
                     st.success(f"{len(ng_selected)}件をNG登録しました")
                 except Exception as e:
                     st.error(f"保存エラー: {e}")
@@ -753,9 +791,10 @@ elif step == 1:
                     if new_t not in st.session_state.sg_themes:
                         st.session_state.sg_themes.append(new_t)
                     new_sel = list(selected)
-                    if new_t not in new_sel:
-                        new_sel.append(new_t)
-                    st.session_state.sg_selected_themes = new_sel
+                    numbered_new_t = f"{CIRCLE_NUMS_T[len(st.session_state.sg_themes)-1]} {new_t}" if len(st.session_state.sg_themes)-1 < len(CIRCLE_NUMS_T) else new_t
+                    if numbered_new_t not in new_sel:
+                        new_sel.append(numbered_new_t)
+                    st.session_state.sg_selected_themes = [_strip_num_t(x) for x in new_sel]
                     st.rerun()
             if len(selected) >= 3:
                 st.caption("（3個選択済みのため追加できません）")
@@ -801,7 +840,8 @@ elif step == 1:
         with col_next:
             if st.button("アイデア20個を生成 →", type="primary", disabled=len(selected) == 0,
                          use_container_width=True):
-                st.session_state.sg_selected_themes = selected
+                # 丸数字を除去して内部データとして保存
+                st.session_state.sg_selected_themes = [_strip_num_t(x) for x in selected]
                 angle_name = st.session_state.sg_current_angle[1]
                 model_id = st.session_state.sg_current_ai[0]
                 try:
@@ -816,7 +856,8 @@ elif step == 1:
                         from script_crew import generate_ideas
                         ideas = generate_ideas(
                             script_type=st.session_state.sg_script_type,
-                            selected_themes=selected, angle_name=angle_name,
+                            selected_themes=st.session_state.sg_selected_themes,
+                            angle_name=angle_name,
                             good_elements=good_elements, rejected_ideas=rejected_ideas,
                             model=model_id,
                         )
@@ -843,20 +884,38 @@ elif step == 2:
 </div>''', unsafe_allow_html=True)
 
     ideas = st.session_state.sg_ideas
+    # 丸数字プレフィックスを付与（表示用）
+    CIRCLE_NUMS = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+    import re as _re_idea
+    def _strip_num(text):
+        """丸数字プレフィックスを除去して元のテキストに戻す"""
+        return _re_idea.sub(r'^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]\s*', '', text)
+    def _add_num(idea_list):
+        """アイデアに丸数字を付与（既に付いていればスキップ）"""
+        result = []
+        for idx, idea in enumerate(idea_list):
+            clean = _strip_num(idea)
+            if idx < len(CIRCLE_NUMS):
+                result.append(f"{CIRCLE_NUMS[idx]} {clean}")
+            else:
+                result.append(clean)
+        return result
+    display_ideas = _add_num(ideas)
 
     if not ideas:
         st.error("アイデア生成に失敗しました。戻って再試行してください。")
     else:
         selected_ideas = st.multiselect(
             "アイデアを3個選択",
-            options=ideas,
-            default=st.session_state.sg_selected_ideas or [],
+            options=display_ideas,
+            default=[d for d in _add_num(st.session_state.sg_selected_ideas or [])
+                     if d in display_ideas],
             max_selections=3,
             placeholder="クリックしてアイデアを選択...",
         )
 
         with st.expander("🚫 気に入らないアイデアをNG登録する（次回から非表示に）"):
-            ng_options = [i for i in ideas if i not in selected_ideas]
+            ng_options = [i for i in display_ideas if i not in selected_ideas]
             ng_selected = st.multiselect(
                 "NG登録するアイデアを選択", options=ng_options, default=[],
                 key="sg_ng_idea_select", placeholder="気に入らないアイデアを選ぶ...",
@@ -864,7 +923,9 @@ elif step == 2:
             if st.button("🚫 NG登録する", key="sg_ng_idea_btn", disabled=not ng_selected):
                 try:
                     from memory_manager import add_rejected_ideas
-                    add_rejected_ideas(ng_selected, st.session_state.sg_script_type)
+                    # 丸数字を除去して保存
+                    add_rejected_ideas([_strip_num(x) for x in ng_selected],
+                                       st.session_state.sg_script_type)
                     st.success(f"{len(ng_selected)}件をNG登録しました")
                 except Exception as e:
                     st.error(f"保存エラー: {e}")
@@ -882,9 +943,10 @@ elif step == 2:
                     if new_idea not in st.session_state.sg_ideas:
                         st.session_state.sg_ideas.append(new_idea)
                     new_sel = list(selected_ideas)
-                    if new_idea not in new_sel:
-                        new_sel.append(new_idea)
-                    st.session_state.sg_selected_ideas = new_sel
+                    numbered_new = f"{CIRCLE_NUMS[len(st.session_state.sg_ideas)-1]} {new_idea}" if len(st.session_state.sg_ideas)-1 < len(CIRCLE_NUMS) else new_idea
+                    if numbered_new not in new_sel:
+                        new_sel.append(numbered_new)
+                    st.session_state.sg_selected_ideas = [_strip_num(x) for x in new_sel]
                     st.rerun()
             if len(selected_ideas) >= 3:
                 st.caption("（3個選択済みのため追加できません）")
@@ -922,7 +984,8 @@ elif step == 2:
         with col_next:
             if st.button("台本を生成 →", type="primary", disabled=len(selected_ideas) == 0,
                          use_container_width=True):
-                st.session_state.sg_selected_ideas = selected_ideas
+                # 丸数字を除去して内部データとして保存
+                st.session_state.sg_selected_ideas = [_strip_num(x) for x in selected_ideas]
                 model_id = st.session_state.sg_current_ai[0]
                 angle_name = st.session_state.sg_current_angle[1]
                 script_type = st.session_state.sg_script_type
@@ -1332,7 +1395,7 @@ border:1px solid #C7D2FE;box-shadow:0 2px 12px rgba(79,70,229,.06);">
         MODEL_STYLES = {
             "Claude Sonnet 4.6":  {"color": "#7C3AED", "bg": "#F5F3FF", "border": "#DDD6FE", "icon": "🟣"},
             "ChatGPT (GPT-4o)":   {"color": "#059669", "bg": "#ECFDF5", "border": "#A7F3D0", "icon": "🟢"},
-            "Gemini 2.0 Flash":   {"color": "#1D4ED8", "bg": "#EFF6FF", "border": "#BFDBFE", "icon": "🔵"},
+            "Gemini 2.5 Flash":   {"color": "#1D4ED8", "bg": "#EFF6FF", "border": "#BFDBFE", "icon": "🔵"},
             "Grok 3 Mini":        {"color": "#374151", "bg": "#F9FAFB", "border": "#D1D5DB", "icon": "⚫"},
         }
         VERDICT_MAP = {
