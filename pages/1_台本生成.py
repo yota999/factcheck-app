@@ -355,6 +355,11 @@ div[data-baseweb="tab-highlight"] {
     transition: all .2s cubic-bezier(.4,0,.2,1) !important;
     border-radius: 10px !important;
     padding: 10px 24px !important;
+    color: white !important;
+}
+.stButton > button[kind="primary"] p,
+.stButton > button[kind="primary"] span {
+    color: white !important;
 }
 .stButton > button[kind="primary"]:hover {
     box-shadow: 0 6px 24px rgba(79,70,229,.35) !important;
