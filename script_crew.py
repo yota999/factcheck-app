@@ -15,10 +15,13 @@ except Exception:
 
 
 # ── LLM呼び出し（モデルを指定して切り替え可能） ──────────────────────
-def _call_llm(prompt: str, model: str = "anthropic/claude-sonnet-4-6",
-              temperature: float = 0.7, max_tokens: int = 8000) -> str:
-    import litellm
-    # xAI の Grok は api_base が必要
+# Claudeが混雑時に自動でGPT-4oにフォールバックするモデルリスト
+_FALLBACK_MODELS = [
+    "gpt-4o",
+    "gemini/gemini-2.5-flash-preview-04-17",
+]
+
+def _build_kwargs(model: str, prompt: str, temperature: float, max_tokens: int) -> dict:
     kwargs = dict(
         model=model,
         messages=[{"role": "user", "content": prompt}],
@@ -28,8 +31,31 @@ def _call_llm(prompt: str, model: str = "anthropic/claude-sonnet-4-6",
     if model.startswith("xai/"):
         kwargs["api_base"] = "https://api.x.ai/v1"
         kwargs["api_key"] = os.getenv("XAI_API_KEY", "")
-    response = litellm.completion(**kwargs)
-    return response.choices[0].message.content
+    return kwargs
+
+def _call_llm(prompt: str, model: str = "anthropic/claude-sonnet-4-6",
+              temperature: float = 0.7, max_tokens: int = 8000) -> str:
+    import litellm
+    # まず指定モデルで試みる
+    last_err = None
+    for attempt_model in [model] + _FALLBACK_MODELS:
+        try:
+            kwargs = _build_kwargs(attempt_model, prompt, temperature, max_tokens)
+            response = litellm.completion(**kwargs)
+            if attempt_model != model:
+                # フォールバックが発動した場合はログに残す
+                print(f"[fallback] {model} → {attempt_model}")
+            return response.choices[0].message.content
+        except Exception as e:
+            err_str = str(e).lower()
+            # overloaded / rate_limit / server_error のときだけ次のモデルへ
+            if any(k in err_str for k in ["overload", "rate_limit", "529", "500", "503"]):
+                last_err = e
+                continue
+            # それ以外のエラー（認証失敗・不正モデル名など）はすぐ上に投げる
+            raise
+    # 全モデル失敗
+    raise last_err
 
 
 # ── Serper: 通常検索（最新記事） ────────────────────────────────────
