@@ -795,11 +795,14 @@ elif step == 1:
     if not themes:
         st.error("テーマ生成に失敗しました。戻って再試行してください。")
     else:
-        selected = st.multiselect(
+        # 選択済みテーマ（数字なし）を display_themes（数字あり）から逆引きしてデフォルト設定
+    _selected_plain = set(st.session_state.sg_selected_themes or [])
+    _default_display = [d for d in display_themes if _strip_num_t(d) in _selected_plain]
+
+    selected = st.multiselect(
             "テーマを1〜3個選択（複数選択可）",
             options=display_themes,
-            default=[d for d in _add_num_t(st.session_state.sg_selected_themes or [])
-                     if d in display_themes],
+            default=_default_display,
             max_selections=3,
             placeholder="クリックしてテーマを選択...",
         )
@@ -829,13 +832,14 @@ elif step == 1:
                 if st.button("＋追加", key="sg_add_theme",
                              disabled=not custom_theme.strip() or len(selected) >= 3):
                     new_t = custom_theme.strip()
+                    # テーマリストに追加（未登録の場合のみ）
                     if new_t not in st.session_state.sg_themes:
                         st.session_state.sg_themes.append(new_t)
-                    new_sel = list(selected)
-                    numbered_new_t = f"{CIRCLE_NUMS_T[len(st.session_state.sg_themes)-1]} {new_t}" if len(st.session_state.sg_themes)-1 < len(CIRCLE_NUMS_T) else new_t
-                    if numbered_new_t not in new_sel:
-                        new_sel.append(numbered_new_t)
-                    st.session_state.sg_selected_themes = [_strip_num_t(x) for x in new_sel]
+                    # 選択済みに追加（数字なしで保持）
+                    current_sel = list(st.session_state.sg_selected_themes or [])
+                    if new_t not in current_sel:
+                        current_sel.append(new_t)
+                    st.session_state.sg_selected_themes = current_sel
                     st.rerun()
             if len(selected) >= 3:
                 st.caption("（3個選択済みのため追加できません）")
@@ -946,11 +950,14 @@ elif step == 2:
     if not ideas:
         st.error("アイデア生成に失敗しました。戻って再試行してください。")
     else:
-        selected_ideas = st.multiselect(
+    # 選択済みアイデア（数字なし）を display_ideas（数字あり）から逆引きしてデフォルト設定
+    _sel_ideas_plain = set(st.session_state.sg_selected_ideas or [])
+    _default_ideas = [d for d in display_ideas if _strip_num(d) in _sel_ideas_plain]
+
+    selected_ideas = st.multiselect(
             "アイデアを3個選択",
             options=display_ideas,
-            default=[d for d in _add_num(st.session_state.sg_selected_ideas or [])
-                     if d in display_ideas],
+            default=_default_ideas,
             max_selections=3,
             placeholder="クリックしてアイデアを選択...",
         )
@@ -981,13 +988,14 @@ elif step == 2:
                 add_disabled = not custom_idea.strip() or len(selected_ideas) >= 3
                 if st.button("＋追加", key="sg_add_idea", disabled=add_disabled):
                     new_idea = custom_idea.strip()
+                    # アイデアリストに追加（未登録の場合のみ）
                     if new_idea not in st.session_state.sg_ideas:
                         st.session_state.sg_ideas.append(new_idea)
-                    new_sel = list(selected_ideas)
-                    numbered_new = f"{CIRCLE_NUMS[len(st.session_state.sg_ideas)-1]} {new_idea}" if len(st.session_state.sg_ideas)-1 < len(CIRCLE_NUMS) else new_idea
-                    if numbered_new not in new_sel:
-                        new_sel.append(numbered_new)
-                    st.session_state.sg_selected_ideas = [_strip_num(x) for x in new_sel]
+                    # 選択済みに追加（数字なしで保持）
+                    current_sel = list(st.session_state.sg_selected_ideas or [])
+                    if new_idea not in current_sel:
+                        current_sel.append(new_idea)
+                    st.session_state.sg_selected_ideas = current_sel
                     st.rerun()
             if len(selected_ideas) >= 3:
                 st.caption("（3個選択済みのため追加できません）")
