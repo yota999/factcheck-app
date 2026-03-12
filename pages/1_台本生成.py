@@ -796,10 +796,10 @@ elif step == 1:
         st.error("テーマ生成に失敗しました。戻って再試行してください。")
     else:
         # 選択済みテーマ（数字なし）を display_themes（数字あり）から逆引きしてデフォルト設定
-    _selected_plain = set(st.session_state.sg_selected_themes or [])
-    _default_display = [d for d in display_themes if _strip_num_t(d) in _selected_plain]
+        _selected_plain = set(st.session_state.sg_selected_themes or [])
+        _default_display = [d for d in display_themes if _strip_num_t(d) in _selected_plain]
 
-    selected = st.multiselect(
+        selected = st.multiselect(
             "テーマを1〜3個選択（複数選択可）",
             options=display_themes,
             default=_default_display,
@@ -950,11 +950,11 @@ elif step == 2:
     if not ideas:
         st.error("アイデア生成に失敗しました。戻って再試行してください。")
     else:
-    # 選択済みアイデア（数字なし）を display_ideas（数字あり）から逆引きしてデフォルト設定
-    _sel_ideas_plain = set(st.session_state.sg_selected_ideas or [])
-    _default_ideas = [d for d in display_ideas if _strip_num(d) in _sel_ideas_plain]
+        # 選択済みアイデア（数字なし）を display_ideas（数字あり）から逆引きしてデフォルト設定
+        _sel_ideas_plain = set(st.session_state.sg_selected_ideas or [])
+        _default_ideas = [d for d in display_ideas if _strip_num(d) in _sel_ideas_plain]
 
-    selected_ideas = st.multiselect(
+        selected_ideas = st.multiselect(
             "アイデアを3個選択",
             options=display_ideas,
             default=_default_ideas,
