@@ -266,16 +266,40 @@ section[data-testid="stSidebar"] .stMarkdown {
 .hint-box .hint-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
 
 /* ═══ ドロップダウン全文表示 ═══ */
-[data-baseweb="menu"] li {
+/* メニューコンテナ */
+[data-baseweb="popover"] > div,
+[data-baseweb="menu"],
+[data-baseweb="menu"] ul,
+[data-baseweb="menu"] [role="listbox"] {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: 480px !important;
+}
+/* 各リストアイテム */
+[data-baseweb="menu"] li,
+[data-baseweb="menu"] [role="option"] {
     white-space: normal !important;
     overflow: visible !important;
     text-overflow: unset !important;
     height: auto !important;
-    padding: 14px 18px !important;
-    line-height: 1.7 !important;
+    min-height: 44px !important;
+    padding: 12px 18px !important;
+    line-height: 1.65 !important;
     border-bottom: none !important;
     transition: background .1s;
     font-size: 0.9rem !important;
+    word-break: break-all;
+    word-wrap: break-word;
+}
+/* アイテム内のテキストspan */
+[data-baseweb="menu"] li span,
+[data-baseweb="menu"] li div,
+[data-baseweb="menu"] [role="option"] span {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    max-width: 100% !important;
+    display: inline !important;
 }
 [data-baseweb="menu"] li:nth-child(odd) {
     background: #F5F3FF !important;
@@ -293,13 +317,25 @@ div[data-testid="stMultiSelect"] span[data-baseweb="tag"] {
     max-width: 100% !important;
     white-space: normal !important;
     height: auto !important;
-    padding: 6px 10px !important;
+    padding: 4px 8px !important;
     line-height: 1.5 !important;
+    border-radius: 6px !important;
 }
-div[data-testid="stMultiSelect"] span[data-baseweb="tag"] span {
+div[data-testid="stMultiSelect"] span[data-baseweb="tag"] span,
+div[data-testid="stMultiSelect"] span[data-baseweb="tag"] div {
     white-space: normal !important;
     overflow: visible !important;
     text-overflow: unset !important;
+    max-width: 100% !important;
+}
+/* マルチセレクトの入力ボックス */
+div[data-testid="stMultiSelect"] > div {
+    height: auto !important;
+    min-height: 44px !important;
+}
+div[data-testid="stMultiSelect"] > div > div {
+    flex-wrap: wrap !important;
+    height: auto !important;
 }
 
 /* ═══ ラジオボタンを候補カード風に ═══ */
