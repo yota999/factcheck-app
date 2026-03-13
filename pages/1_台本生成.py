@@ -462,6 +462,19 @@ div[data-testid="stMultiSelect"] > div > div:focus-within {
     box-shadow: 0 0 0 3px rgba(79,70,229,.08) !important;
 }
 
+/* ═══ チェックボックス（アイデア一覧）ラベル折り返し ═══ */
+div[data-testid="stCheckbox"] label {
+    white-space: normal !important;
+    overflow: visible !important;
+    line-height: 1.7 !important;
+    font-size: 0.9rem !important;
+    align-items: flex-start !important;
+}
+div[data-testid="stCheckbox"] label p {
+    white-space: normal !important;
+    word-break: break-word !important;
+}
+
 /* ═══ divider ═══ */
 hr { border-color: #E5E7EB !important; margin: 24px 0 !important; }
 
@@ -950,31 +963,74 @@ elif step == 2:
     if not ideas:
         st.error("アイデア生成に失敗しました。戻って再試行してください。")
     else:
-        # 選択済みアイデア（数字なし）を display_ideas（数字あり）から逆引きしてデフォルト設定
-        _sel_ideas_plain = set(st.session_state.sg_selected_ideas or [])
-        _default_ideas = [d for d in display_ideas if _strip_num(d) in _sel_ideas_plain]
+        # ── チェックボックス方式でアイデアを表示（全文表示・縞模様・3個まで選択） ──
+        current_plain = set(st.session_state.sg_selected_ideas or [])
+        new_plain = set()
 
-        selected_ideas = st.multiselect(
-            "アイデアを3個選択",
-            options=display_ideas,
-            default=_default_ideas,
-            max_selections=3,
-            placeholder="クリックしてアイデアを選択...",
+        n_checked = sum(1 for idea in display_ideas if _strip_num(idea) in current_plain)
+        # カスタム追加分も含めてカウント
+        custom_checked = sum(1 for x in current_plain if x not in [_strip_num(d) for d in display_ideas])
+        total_checked = n_checked + custom_checked
+
+        st.markdown(
+            f'<div style="font-size:0.88rem;color:#6B7280;margin-bottom:10px;">'
+            f'アイデアを最大3個選択してください ― <b style="color:{"#4F46E5" if total_checked>0 else "#6B7280"}">{total_checked}/3 選択中</b></div>',
+            unsafe_allow_html=True,
         )
 
-        with st.expander("🚫 気に入らないアイデアをNG登録する（次回から非表示に）"):
-            ng_options = [i for i in display_ideas if i not in selected_ideas]
-            ng_selected = st.multiselect(
-                "NG登録するアイデアを選択", options=ng_options, default=[],
-                key="sg_ng_idea_select", placeholder="気に入らないアイデアを選ぶ...",
+        for i, idea in enumerate(display_ideas):
+            plain = _strip_num(idea)
+            is_checked = plain in current_plain
+            max_reached = total_checked >= 3 and not is_checked
+            bg = "#F5F3FF" if i % 2 == 0 else "#FFFFFF"
+            border = "#C4B5FD" if is_checked else "#E5E7EB"
+            st.markdown(
+                f'<div style="background:{bg};border:1.5px solid {border};border-radius:8px;'
+                f'padding:10px 14px;margin-bottom:6px;line-height:1.65;">',
+                unsafe_allow_html=True,
             )
-            if st.button("🚫 NG登録する", key="sg_ng_idea_btn", disabled=not ng_selected):
+            checked = st.checkbox(
+                idea,
+                value=is_checked,
+                key=f"idea_chk_{i}",
+                disabled=max_reached,
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+            if checked:
+                new_plain.add(plain)
+
+        # カスタム追加分を保持
+        for x in current_plain:
+            if x not in [_strip_num(d) for d in display_ideas]:
+                new_plain.add(x)
+
+        if new_plain != current_plain:
+            st.session_state.sg_selected_ideas = list(new_plain)
+            st.rerun()
+
+        # selected_ideas は後続コードとの互換用
+        selected_ideas = [d for d in display_ideas if _strip_num(d) in new_plain]
+        # カスタム追加分も含める
+        for x in new_plain:
+            if x not in [_strip_num(d) for d in display_ideas]:
+                selected_ideas.append(x)
+
+        total_checked = len(new_plain)
+
+        with st.expander("🚫 気に入らないアイデアをNG登録する（次回から非表示に）"):
+            ng_options = [idea for idea in display_ideas if _strip_num(idea) not in new_plain]
+            ng_sel_keys = [f"ng_idea_{i}" for i, idea in enumerate(display_ideas)
+                           if _strip_num(idea) not in new_plain]
+            ng_checked = []
+            for idea in ng_options:
+                plain = _strip_num(idea)
+                if st.checkbox(f"🚫 {idea}", key=f"ng_idea_chk_{plain[:20]}", value=False):
+                    ng_checked.append(plain)
+            if st.button("🚫 NG登録する", key="sg_ng_idea_btn", disabled=not ng_checked):
                 try:
                     from memory_manager import add_rejected_ideas
-                    # 丸数字を除去して保存
-                    add_rejected_ideas([_strip_num(x) for x in ng_selected],
-                                       st.session_state.sg_script_type)
-                    st.success(f"{len(ng_selected)}件をNG登録しました")
+                    add_rejected_ideas(ng_checked, st.session_state.sg_script_type)
+                    st.success(f"{len(ng_checked)}件をNG登録しました")
                 except Exception as e:
                     st.error(f"保存エラー: {e}")
 
@@ -985,19 +1041,17 @@ elif step == 2:
                     placeholder="例：夫に言われた一言で決意した体験談",
                     label_visibility="collapsed", key="sg_custom_idea_input")
             with c2:
-                add_disabled = not custom_idea.strip() or len(selected_ideas) >= 3
+                add_disabled = not custom_idea.strip() or total_checked >= 3
                 if st.button("＋追加", key="sg_add_idea", disabled=add_disabled):
                     new_idea = custom_idea.strip()
-                    # アイデアリストに追加（未登録の場合のみ）
                     if new_idea not in st.session_state.sg_ideas:
                         st.session_state.sg_ideas.append(new_idea)
-                    # 選択済みに追加（数字なしで保持）
                     current_sel = list(st.session_state.sg_selected_ideas or [])
                     if new_idea not in current_sel:
                         current_sel.append(new_idea)
                     st.session_state.sg_selected_ideas = current_sel
                     st.rerun()
-            if len(selected_ideas) >= 3:
+            if total_checked >= 3:
                 st.caption("（3個選択済みのため追加できません）")
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1031,10 +1085,10 @@ elif step == 2:
                     except Exception as e:
                         st.error(f"エラー: {e}")
         with col_next:
-            if st.button("台本を生成 →", type="primary", disabled=len(selected_ideas) == 0,
+            if st.button("台本を生成 →", type="primary", disabled=total_checked == 0,
                          use_container_width=True):
                 # 丸数字を除去して内部データとして保存
-                st.session_state.sg_selected_ideas = [_strip_num(x) for x in selected_ideas]
+                st.session_state.sg_selected_ideas = list(new_plain)
                 model_id = st.session_state.sg_current_ai[0]
                 angle_name = st.session_state.sg_current_angle[1]
                 script_type = st.session_state.sg_script_type

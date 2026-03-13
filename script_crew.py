@@ -294,7 +294,12 @@ def generate_ideas(
             ideas.append(line.split(". ", 1)[1].strip())
         elif len(line) > 2 and line[0].isdigit() and "．" in line:
             ideas.append(line.split("．", 1)[1].strip())
-    return ideas[:20]
+    # マークダウン記号（**太字** や *斜体*）を除去
+    cleaned = []
+    for idea in ideas[:20]:
+        idea = idea.replace("**", "").replace("*", "")
+        cleaned.append(idea)
+    return cleaned
 
 
 def generate_draft(
