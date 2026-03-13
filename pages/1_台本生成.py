@@ -591,9 +591,10 @@ def _init():
         # セクションビルダー（廃止済み・互換性のため残す）
         "sg_section_mode": False,
         "sg_sections": [],
-        # 台本バリアント（5パターン）
+        # 台本バリアント（10パターン）
         "sg_draft_variants": [],
         "sg_selected_variant_idx": 0,
+        "sg_variant_error": "",
         # ファクトチェック
         "sg_fc_results": [],
     }
@@ -1145,25 +1146,44 @@ elif step == 3:
 
     variants = st.session_state.get("sg_draft_variants", [])
 
-    # ── A) バリアント未生成 → 生成ボタン ──────────────────────────
-    if not variants:
-        st.markdown("""
-<div style="background:linear-gradient(135deg,#EEF2FF,#F5F3FF);border-radius:14px;
-padding:22px 24px;border:1px solid #C7D2FE;margin-bottom:20px;">
-<h4 style="margin:0 0 8px;color:#1E1B4B;">✍️ 5種類の切り口で台本を同時生成します</h4>
-<p style="margin:0;color:#4B5563;font-size:0.88rem;line-height:1.7;">
-科学根拠型・感情共感型・体験談型・常識論破型・今すぐ行動型の<br>
-5パターンを並列生成します。最も好みの台本を選んでください。
-</p>
-</div>""", unsafe_allow_html=True)
+    # ── アングル定義（UIとscript_crewで共通） ───────────────────────
+    ANGLE_ICONS = {
+        "science":    "🔬", "emotion":  "💗", "story":   "📖",
+        "debate":     "⚡", "action":   "🚀", "ranking": "🏆",
+        "howto":      "🛠️", "psychology":"🧠", "trend":  "📈",
+        "expert":     "👑",
+    }
+    ANGLE_COLORS = {
+        "science":    ("#1D4ED8", "#EFF6FF", "#BFDBFE"),
+        "emotion":    ("#BE185D", "#FDF2F8", "#FBCFE8"),
+        "story":      ("#065F46", "#F0FDF4", "#A7F3D0"),
+        "debate":     ("#92400E", "#FFFBEB", "#FDE68A"),
+        "action":     ("#7C3AED", "#F5F3FF", "#DDD6FE"),
+        "ranking":    ("#B45309", "#FFF7ED", "#FED7AA"),
+        "howto":      ("#0F766E", "#F0FDFA", "#99F6E4"),
+        "psychology": ("#6D28D9", "#F5F3FF", "#EDE9FE"),
+        "trend":      ("#0369A1", "#F0F9FF", "#BAE6FD"),
+        "expert":     ("#9D174D", "#FFF1F2", "#FFE4E6"),
+    }
 
-        col_bk, col_gen = st.columns([1, 3])
-        with col_bk:
-            if st.button("← 戻る", key="s3_back_gen"):
-                st.session_state.sg_step = 2
-                st.rerun()
-        with col_gen:
-            if st.button("🚀 5パターンを並列生成する", type="primary", use_container_width=True):
+    # ── A) 自動生成（未生成の場合はボタンなしで自動スタート） ───────
+    if not variants:
+        gen_error = st.session_state.get("sg_variant_error", "")
+        if gen_error:
+            st.error(f"生成エラーが発生しました：{gen_error}")
+            col_bk_e, col_retry = st.columns([1, 2])
+            with col_bk_e:
+                if st.button("← アイデア選択に戻る", key="s3_back_err"):
+                    st.session_state["sg_variant_error"] = ""
+                    st.session_state.sg_step = 2
+                    st.rerun()
+            with col_retry:
+                if st.button("🔄 再試行", type="primary", key="s3_retry", use_container_width=True):
+                    st.session_state["sg_variant_error"] = ""
+                    st.rerun()
+        else:
+            # 自動生成を実行
+            with st.spinner("10種の切り口で台本を並列生成中... しばらくお待ちください（1〜2分）"):
                 try:
                     from memory_manager import get_good_elements, get_bad_patterns, get_reference_scripts
                     good_elements = get_good_elements(script_type)
@@ -1171,89 +1191,103 @@ padding:22px 24px;border:1px solid #C7D2FE;margin-bottom:20px;">
                     ref_scripts = get_reference_scripts(script_type)
                 except Exception:
                     good_elements, bad_patterns, ref_scripts = [], [], []
-
-                with st.spinner("5種の切り口で台本を並列生成中... 少しお待ちください"):
-                    try:
-                        from script_crew import generate_draft_variants
-                        result = generate_draft_variants(
-                            script_type=script_type,
-                            selected_themes=st.session_state.sg_selected_themes,
-                            selected_ideas=st.session_state.sg_selected_ideas,
-                            good_elements=good_elements,
-                            bad_patterns=bad_patterns,
-                            ref_scripts=ref_scripts,
-                            model=model_id,
-                        )
-                        st.session_state["sg_draft_variants"] = result
-                        st.session_state["sg_selected_variant_idx"] = 0
-                        st.session_state.sg_draft = result[0]["draft"]
-                        st.session_state.sg_edited_draft = result[0]["draft"]
-                        st.rerun()
-                    except Exception as e:
-                        import traceback
-                        st.error(f"生成エラー: {e}\n{traceback.format_exc()}")
+                try:
+                    from script_crew import generate_draft_variants
+                    result = generate_draft_variants(
+                        script_type=script_type,
+                        selected_themes=st.session_state.sg_selected_themes,
+                        selected_ideas=st.session_state.sg_selected_ideas,
+                        good_elements=good_elements,
+                        bad_patterns=bad_patterns,
+                        ref_scripts=ref_scripts,
+                        model=model_id,
+                    )
+                    st.session_state["sg_draft_variants"] = result
+                    st.session_state["sg_selected_variant_idx"] = 0
+                    st.session_state["sg_variant_error"] = ""
+                    st.session_state.sg_draft = result[0]["draft"]
+                    st.session_state.sg_edited_draft = result[0]["draft"]
+                    # テキストエリアのキャッシュをクリア
+                    st.session_state.pop("sg_direct_edit_v2", None)
+                    st.rerun()
+                except Exception as e:
+                    import traceback
+                    st.session_state["sg_variant_error"] = f"{e}\n{traceback.format_exc()}"
+                    st.rerun()
 
     # ── B) バリアント生成済み → 選択＋編集 ────────────────────────
     else:
-        ANGLE_ICONS = {"science": "🔬", "emotion": "💗", "story": "📖", "debate": "⚡", "action": "🚀"}
-        ANGLE_COLORS = {
-            "science": ("#1D4ED8", "#EFF6FF", "#BFDBFE"),
-            "emotion": ("#BE185D", "#FDF2F8", "#FBCFE8"),
-            "story":   ("#065F46", "#F0FDF4", "#A7F3D0"),
-            "debate":  ("#92400E", "#FFFBEB", "#FDE68A"),
-            "action":  ("#7C3AED", "#F5F3FF", "#DDD6FE"),
-        }
-
         sel_idx = st.session_state.get("sg_selected_variant_idx", 0)
+        # 範囲外チェック
+        if sel_idx >= len(variants):
+            sel_idx = 0
+            st.session_state["sg_selected_variant_idx"] = 0
 
-        # 選択カード（横並び5枚）
+        # ── 選択カード（5枚 × 2行） ──────────────────────────────
         st.markdown("**① 切り口を選んでください**")
-        cols5 = st.columns(5)
-        for ci, v in enumerate(variants):
-            ak = v["angle_key"]
-            icon = ANGLE_ICONS.get(ak, "✍️")
-            txt_color, bg, border = ANGLE_COLORS.get(ak, ("#4F46E5", "#EEF2FF", "#C7D2FE"))
-            is_sel = (ci == sel_idx)
-            card_bg = bg if is_sel else "white"
-            card_border = border if is_sel else "#E5E7EB"
-            shadow = f"0 0 0 2px {border}" if is_sel else "none"
-            with cols5[ci]:
-                st.markdown(
-                    f'<div style="background:{card_bg};border:2px solid {card_border};border-radius:12px;'
-                    f'padding:12px 8px;text-align:center;box-shadow:{shadow};cursor:pointer;'
-                    f'min-height:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;">'
-                    f'<div style="font-size:1.4rem;">{icon}</div>'
-                    f'<div style="font-size:0.72rem;font-weight:700;color:{txt_color};margin-top:4px;line-height:1.3;">'
-                    f'{v["angle_name"]}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-                if st.button("選択", key=f"sel_variant_{ci}",
-                             type="primary" if is_sel else "secondary",
-                             use_container_width=True):
-                    st.session_state["sg_selected_variant_idx"] = ci
-                    st.session_state.sg_draft = variants[ci]["draft"]
-                    st.session_state.sg_edited_draft = variants[ci]["draft"]
-                    st.rerun()
+        row1_variants = variants[:5]
+        row2_variants = variants[5:] if len(variants) > 5 else []
+
+        def _render_angle_row(row_variants, offset):
+            cols = st.columns(len(row_variants))
+            for ci_local, v in enumerate(row_variants):
+                ci = ci_local + offset
+                ak = v["angle_key"]
+                icon = ANGLE_ICONS.get(ak, "✍️")
+                txt_color, bg, border = ANGLE_COLORS.get(ak, ("#4F46E5", "#EEF2FF", "#C7D2FE"))
+                is_sel = (ci == sel_idx)
+                card_bg = bg if is_sel else "white"
+                card_border = border if is_sel else "#E5E7EB"
+                shadow = f"0 0 0 3px {border}" if is_sel else "none"
+                with cols[ci_local]:
+                    st.markdown(
+                        f'<div style="background:{card_bg};border:2px solid {card_border};'
+                        f'border-radius:12px;padding:10px 6px;text-align:center;'
+                        f'box-shadow:{shadow};min-height:68px;display:flex;flex-direction:column;'
+                        f'align-items:center;justify-content:center;">'
+                        f'<div style="font-size:1.3rem;">{icon}</div>'
+                        f'<div style="font-size:0.68rem;font-weight:700;color:{txt_color};'
+                        f'margin-top:3px;line-height:1.3;">{v["angle_name"]}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                    if st.button("選択" if not is_sel else "✓ 選択中",
+                                 key=f"sel_variant_{ci}",
+                                 type="primary" if is_sel else "secondary",
+                                 use_container_width=True):
+                        # テキストエリアのキャッシュを必ずクリアしてから切り替え
+                        st.session_state.pop("sg_direct_edit_v2", None)
+                        st.session_state["sg_selected_variant_idx"] = ci
+                        st.session_state.sg_draft = variants[ci]["draft"]
+                        st.session_state.sg_edited_draft = variants[ci]["draft"]
+                        st.rerun()
+
+        _render_angle_row(row1_variants, 0)
+        if row2_variants:
+            st.markdown('<div style="margin-top:8px;"></div>', unsafe_allow_html=True)
+            _render_angle_row(row2_variants, 5)
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("**② 台本を確認・編集してください**")
 
         ak_sel = variants[sel_idx]["angle_key"]
-        txt_c, _, _ = ANGLE_COLORS.get(ak_sel, ("#4F46E5", "#EEF2FF", "#C7D2FE"))
+        txt_c, bg_c, border_c = ANGLE_COLORS.get(ak_sel, ("#4F46E5", "#EEF2FF", "#C7D2FE"))
         icon_sel = ANGLE_ICONS.get(ak_sel, "✍️")
         st.markdown(
-            f'<div style="background:#F8FAFF;border-left:4px solid {txt_c};border-radius:0 10px 10px 0;'
+            f'<div style="background:{bg_c};border-left:4px solid {txt_c};border-radius:0 10px 10px 0;'
             f'padding:10px 16px;margin-bottom:12px;font-size:0.88rem;color:{txt_c};font-weight:600;">'
             f'{icon_sel} 現在選択中：{variants[sel_idx]["angle_name"]}</div>',
             unsafe_allow_html=True,
         )
 
+        # テキストエリア：session_state に値がある場合はそれを、なければ sg_edited_draft を使う
+        _ta_key = "sg_direct_edit_v2"
+        if _ta_key not in st.session_state:
+            st.session_state[_ta_key] = st.session_state.sg_edited_draft
         edited = st.text_area(
             "台本（直接編集できます）",
-            value=st.session_state.sg_edited_draft,
             height=500,
-            key="sg_direct_edit_v2",
+            key=_ta_key,
         )
         char_count = len(edited)
         if char_count < target_min:
@@ -1269,11 +1303,13 @@ padding:22px 24px;border:1px solid #C7D2FE;margin-bottom:20px;">
                 st.session_state.sg_step = 2
                 st.rerun()
         with col_regen2:
-            if st.button("🔄 5パターン再生成", key="s3_regen"):
+            if st.button("🔄 再生成", key="s3_regen"):
                 st.session_state["sg_draft_variants"] = []
                 st.session_state["sg_selected_variant_idx"] = 0
+                st.session_state["sg_variant_error"] = ""
                 st.session_state.sg_draft = ""
                 st.session_state.sg_edited_draft = ""
+                st.session_state.pop("sg_direct_edit_v2", None)
                 st.rerun()
         with col_next2:
             if st.button("ファクトチェック → 完成へ進む", type="primary",
