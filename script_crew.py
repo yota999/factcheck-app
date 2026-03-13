@@ -353,6 +353,80 @@ def generate_draft(
     return _call_llm(prompt, model=model, temperature=0.65, max_tokens=max_tok)
 
 
+# 5種類のアングル（切り口）で台本を並列生成
+DRAFT_ANGLES = [
+    ("science",  "科学・データ根拠型",   "最新研究・数値・科学的根拠を前面に出し、論理で説得する"),
+    ("emotion",  "感情・共感型",         "読者の悩みや感情に深く共感し、感動・共鳴で動かす"),
+    ("story",    "体験談・ストーリー型", "具体的なエピソードや体験談を軸に、物語として展開する"),
+    ("debate",   "常識論破・逆説型",     "常識を覆す衝撃的な視点・逆説で、読者の固定観念を壊す"),
+    ("action",   "今すぐ行動型",         "緊急性・具体的アクションを強調し、今すぐやりたくさせる"),
+]
+
+def generate_draft_variants(
+    script_type: str,
+    selected_themes: list,
+    selected_ideas: list,
+    good_elements: list,
+    bad_patterns: list,
+    ref_scripts: list,
+    model: str = "anthropic/claude-sonnet-4-6",
+) -> list:
+    """5種のアングルで台本を並列生成。[{"angle_key","angle_name","draft"},...] を返す"""
+    import concurrent.futures
+
+    persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
+    structure = YOUTUBE_STRUCTURE if script_type == "youtube" else REEL_STRUCTURE
+    themes_str = " / ".join(selected_themes)
+    ideas_str = "\n".join(f"・{i}" for i in selected_ideas)
+    good_str = "\n".join(f"・{e}" for e in good_elements) or "（データなし）"
+    bad_str = "\n".join(f"・{p}" for p in bad_patterns) or "（データなし）"
+    ref_str = ""
+    for i, ref in enumerate(ref_scripts, 1):
+        ref_str += f"\n【参考台本{i}（冒頭抜粋）】\n{ref[:600]}\n"
+    char_min, char_max = (4500, 5000) if script_type == "youtube" else (700, 800)
+    max_tok = 10000 if script_type == "youtube" else 2000
+
+    def _gen_one(angle_key, angle_name, angle_desc):
+        prompt = f"""{persona}
+
+以下の情報をもとに、【{angle_name}】の切り口で完成した台本を作成してください。
+
+【切り口の特徴】{angle_desc}
+
+【テーマ】{themes_str}
+
+{structure}
+
+【使用するアイデア（これらを盛り込む）】
+{ideas_str}
+
+【過去に好評だった要素（積極的に取り入れる）】
+{good_str}
+
+【過去に悪評だったパターン（絶対に避ける）】
+{bad_str}
+{ref_str}
+
+【必須ルール】
+・文字数：{char_min}〜{char_max}文字
+・台本本文のみ出力（説明・補足不要）
+・改行を適切に入れて読みやすく"""
+        try:
+            draft = _call_llm(prompt, model=model, temperature=0.72, max_tokens=max_tok)
+        except Exception as e:
+            draft = f"（生成エラー: {e}）"
+        return {"angle_key": angle_key, "angle_name": angle_name, "draft": draft}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+        futures = [ex.submit(_gen_one, ak, an, ad) for ak, an, ad in DRAFT_ANGLES]
+        results = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+    # DRAFT_ANGLESの順番で並び替え
+    order = {ak: i for i, (ak, _, _) in enumerate(DRAFT_ANGLES)}
+    results.sort(key=lambda x: order.get(x["angle_key"], 99))
+    return results
+
+
 def generate_titles(draft: str, script_type: str,
                     model: str = "anthropic/claude-sonnet-4-6") -> str:
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
