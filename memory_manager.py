@@ -291,7 +291,7 @@ def get_edit_improvements(script_type: str) -> list:
 
 
 def save_edit_improvements(rules: list, script_type: str):
-    """編集改善ルールを保存（タイプ別・最新20件保持）"""
+    """編集改善ルールを保存（タイプ別・最新500件保持）"""
     if not rules:
         return
     history = _load_history()
@@ -300,7 +300,7 @@ def save_edit_improvements(rules: list, script_type: str):
     for rule in rules:
         if rule not in existing:
             existing.append(rule)
-    td["edit_improvements"] = existing[-20:]
+    td["edit_improvements"] = existing[-500:]
     _save_history(history)
 
 

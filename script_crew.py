@@ -388,7 +388,7 @@ def generate_draft_variants(
     bad_str = "\n".join(f"・{p}" for p in bad_patterns) or "（データなし）"
     # ユーザー編集から学習した改善ルール
     improvements = edit_improvements or []
-    improve_str = "\n".join(f"・{r}" for r in improvements[-10:]) if improvements else ""
+    improve_str = "\n".join(f"・{r}" for r in improvements[-15:]) if improvements else ""
     ref_str = ""
     for i, ref in enumerate(ref_scripts, 1):
         ref_str += f"\n【参考台本{i}（冒頭抜粋）】\n{ref[:600]}\n"
