@@ -108,6 +108,7 @@ def _default_type_data() -> dict:
         "bad_patterns": [],
         "rejected_themes": [],
         "rejected_ideas": [],
+        "edit_improvements": [],   # ユーザー編集から学習した改善ルール
         "stats": {"total_generated": 0, "good_count": 0, "bad_count": 0},
     }
 
@@ -280,6 +281,26 @@ def add_rejected_themes(themes: list, script_type: str):
             td["rejected_themes"].append(t)
             existing.add(t)
     td["rejected_themes"] = td["rejected_themes"][-100:]
+    _save_history(history)
+
+
+def get_edit_improvements(script_type: str) -> list:
+    """ユーザー編集から学習した改善ルール一覧（タイプ別）"""
+    history = _load_history()
+    return _type_data(history, script_type).get("edit_improvements", [])
+
+
+def save_edit_improvements(rules: list, script_type: str):
+    """編集改善ルールを保存（タイプ別・最新20件保持）"""
+    if not rules:
+        return
+    history = _load_history()
+    td = _type_data(history, script_type)
+    existing = td.setdefault("edit_improvements", [])
+    for rule in rules:
+        if rule not in existing:
+            existing.append(rule)
+    td["edit_improvements"] = existing[-20:]
     _save_history(history)
 
 

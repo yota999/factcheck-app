@@ -1185,12 +1185,14 @@ elif step == 3:
             # 自動生成を実行
             with st.spinner("10種の切り口で台本を並列生成中... しばらくお待ちください（1〜2分）"):
                 try:
-                    from memory_manager import get_good_elements, get_bad_patterns, get_reference_scripts
+                    from memory_manager import (get_good_elements, get_bad_patterns,
+                                                get_reference_scripts, get_edit_improvements)
                     good_elements = get_good_elements(script_type)
                     bad_patterns = get_bad_patterns(script_type)
                     ref_scripts = get_reference_scripts(script_type)
+                    edit_improvements = get_edit_improvements(script_type)
                 except Exception:
-                    good_elements, bad_patterns, ref_scripts = [], [], []
+                    good_elements, bad_patterns, ref_scripts, edit_improvements = [], [], [], []
                 try:
                     from script_crew import generate_draft_variants
                     result = generate_draft_variants(
@@ -1201,6 +1203,7 @@ elif step == 3:
                         bad_patterns=bad_patterns,
                         ref_scripts=ref_scripts,
                         model=model_id,
+                        edit_improvements=edit_improvements,
                     )
                     st.session_state["sg_draft_variants"] = result
                     st.session_state["sg_selected_variant_idx"] = 0
@@ -1315,6 +1318,22 @@ elif step == 3:
             if st.button("ファクトチェック → 完成へ進む", type="primary",
                          key="s3_next", use_container_width=True):
                 st.session_state.sg_edited_draft = edited
+                # ── 編集差分が大きい場合は改善ルールを自動学習 ──
+                original_draft = variants[sel_idx]["draft"]
+                edit_diff = abs(len(edited) - len(original_draft))
+                content_changed = edited.strip() != original_draft.strip()
+                if content_changed and edit_diff > 50:
+                    try:
+                        from script_crew import analyze_edit_improvements
+                        from memory_manager import save_edit_improvements
+                        rules = analyze_edit_improvements(
+                            original_draft, edited, script_type, model_id
+                        )
+                        if rules:
+                            save_edit_improvements(rules, script_type)
+                            st.session_state["sg_last_learned_rules"] = rules
+                    except Exception:
+                        pass
                 st.session_state.sg_fc_results = []
                 st.session_state.sg_step = 4
                 st.rerun()
@@ -1332,6 +1351,24 @@ elif step == 4:
 
     # ────────────────────────────────────────────────────────────────
     # A) ファクトチェック未実施
+    # 直前に学習したルールがあれば表示
+    last_rules = st.session_state.get("sg_last_learned_rules", [])
+    if last_rules:
+        rules_html = "".join(
+            f'<div style="display:flex;gap:8px;margin-bottom:6px;">'
+            f'<span style="color:#059669;font-weight:700;flex-shrink:0;">✓</span>'
+            f'<span style="font-size:0.85rem;color:#065F46;">{r}</span></div>'
+            for r in last_rules
+        )
+        st.markdown(
+            f'<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:12px;'
+            f'padding:14px 18px;margin-bottom:16px;">'
+            f'<div style="font-weight:700;color:#065F46;margin-bottom:8px;">✨ 編集内容を学習しました — 次回の生成から自動反映されます</div>'
+            f'{rules_html}</div>',
+            unsafe_allow_html=True,
+        )
+        st.session_state["sg_last_learned_rules"] = []  # 一度だけ表示
+
     # ────────────────────────────────────────────────────────────────
     if not st.session_state.sg_fc_results:
 

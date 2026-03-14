@@ -375,8 +375,9 @@ def generate_draft_variants(
     bad_patterns: list,
     ref_scripts: list,
     model: str = "anthropic/claude-sonnet-4-6",
+    edit_improvements: list = None,
 ) -> list:
-    """5種のアングルで台本を並列生成。[{"angle_key","angle_name","draft"},...] を返す"""
+    """10種のアングルで台本を並列生成。[{"angle_key","angle_name","draft"},...] を返す"""
     import concurrent.futures
 
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
@@ -385,6 +386,9 @@ def generate_draft_variants(
     ideas_str = "\n".join(f"・{i}" for i in selected_ideas)
     good_str = "\n".join(f"・{e}" for e in good_elements) or "（データなし）"
     bad_str = "\n".join(f"・{p}" for p in bad_patterns) or "（データなし）"
+    # ユーザー編集から学習した改善ルール
+    improvements = edit_improvements or []
+    improve_str = "\n".join(f"・{r}" for r in improvements[-10:]) if improvements else ""
     ref_str = ""
     for i, ref in enumerate(ref_scripts, 1):
         ref_str += f"\n【参考台本{i}（冒頭抜粋）】\n{ref[:600]}\n"
@@ -392,6 +396,11 @@ def generate_draft_variants(
     max_tok = 10000 if script_type == "youtube" else 2000
 
     def _gen_one(angle_key, angle_name, angle_desc):
+        improve_section = f"""
+【✨ユーザーの編集履歴から学んだ改善ルール（最優先で反映すること）】
+{improve_str}
+""" if improve_str else ""
+
         prompt = f"""{persona}
 
 以下の情報をもとに、【{angle_name}】の切り口で完成した台本を作成してください。
@@ -410,7 +419,7 @@ def generate_draft_variants(
 
 【過去に悪評だったパターン（絶対に避ける）】
 {bad_str}
-{ref_str}
+{improve_section}{ref_str}
 
 【必須ルール】
 ・文字数：{char_min}〜{char_max}文字
@@ -635,6 +644,45 @@ def analyze_good_elements(script: str, script_type: str, model: str) -> list:
             if line and len(line) > 5:
                 elements.append(line)
         return elements[:3]
+    except Exception:
+        return []
+
+
+def analyze_edit_improvements(
+    original: str, edited: str, script_type: str, model: str
+) -> list:
+    """元台本とユーザー編集後台本を比較し、改善ルールを3〜5個抽出してリストで返す"""
+    type_name = "YouTube台本" if script_type == "youtube" else "リール台本"
+    # 長すぎる場合は冒頭と末尾を抜粋
+    orig_excerpt = original[:1200] + ("\n...(省略)...\n" + original[-400:] if len(original) > 1600 else "")
+    edit_excerpt = edited[:1200] + ("\n...(省略)...\n" + edited[-400:] if len(edited) > 1600 else "")
+
+    prompt = f"""あなたは{type_name}の品質改善を専門とするコーチです。
+以下の「修正前」と「修正後」の台本を比較し、ユーザーがどのような改善を行ったかを分析してください。
+
+【修正前（AI生成版）】
+{orig_excerpt}
+
+【修正後（ユーザー編集版）】
+{edit_excerpt}
+
+【分析してほしいこと】
+ユーザーが行った編集から「次回のAI生成に活かすべき改善ルール」を3〜5個抽出してください。
+
+【出力形式】（箇条書きのみ・各30〜60文字・前置き不要）
+・ルール1
+・ルール2
+・ルール3
+（例：「冒頭の数字データは具体的な研究名と年を必ず添える」「体験談は一人称で語りかける形式にする」）"""
+
+    try:
+        text = _call_llm(prompt, model=model, temperature=0.3, max_tokens=400)
+        rules = []
+        for line in text.split("\n"):
+            line = line.strip().lstrip("・-•* 　123456789.").strip()
+            if line and len(line) > 8:
+                rules.append(line)
+        return rules[:5]
     except Exception:
         return []
 
