@@ -388,7 +388,7 @@ def generate_draft_variants(
     bad_str = "\n".join(f"・{p}" for p in bad_patterns) or "（データなし）"
     # ユーザー編集から学習した改善ルール
     improvements = edit_improvements or []
-    improve_str = "\n".join(f"・{r}" for r in improvements[-15:]) if improvements else ""
+    improve_str = "\n".join(f"・{r}" for r in improvements[-20:]) if improvements else ""
     ref_str = ""
     for i, ref in enumerate(ref_scripts, 1):
         ref_str += f"\n【参考台本{i}（冒頭抜粋）】\n{ref[:600]}\n"
@@ -685,6 +685,53 @@ def analyze_edit_improvements(
         return rules[:5]
     except Exception:
         return []
+
+
+def consolidate_improvement_rules(
+    current_rules: list, new_rules: list, script_type: str, model: str
+) -> list:
+    """既存ルール＋新ルールをAIが統合・精製して常に最良20件を維持する"""
+    # 重複除去して結合
+    combined = list(current_rules)
+    for r in new_rules:
+        if r not in combined:
+            combined.append(r)
+
+    # 20件以下なら精製不要
+    if len(combined) <= 20:
+        return combined
+
+    type_name = "YouTube台本" if script_type == "youtube" else "リール台本"
+    rules_str = "\n".join(f"{i+1}. {r}" for i, r in enumerate(combined))
+
+    prompt = f"""あなたは{type_name}の改善専門家です。
+以下の改善ルール一覧を分析し、次の3つの作業を行ってください：
+1. 似た内容・重複するルールを1つに統合（より具体的・明確な表現にする）
+2. 矛盾するルールは重要度の高い方を残す
+3. 最終的に最も重要な20件に絞り込む
+
+【改善ルール一覧】
+{rules_str}
+
+【出力形式】
+箇条書き（・で始まる）で20件以内を出力。前置き・説明・番号は不要。
+各ルールは30〜70文字で具体的に記述すること。
+
+・ルール
+・ルール
+..."""
+
+    try:
+        text = _call_llm(prompt, model=model, temperature=0.2, max_tokens=700)
+        refined = []
+        for line in text.split("\n"):
+            line = line.strip().lstrip("・-•* 　123456789.）)").strip()
+            if line and len(line) > 8:
+                refined.append(line)
+        return refined[:20] if refined else combined[-20:]
+    except Exception:
+        # 失敗時は最新20件にフォールバック
+        return combined[-20:]
 
 
 def analyze_bad_pattern(script: str, script_type: str, bad_note: str, model: str) -> str:

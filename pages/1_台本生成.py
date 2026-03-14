@@ -1324,14 +1324,18 @@ elif step == 3:
                 content_changed = edited.strip() != original_draft.strip()
                 if content_changed and edit_diff > 50:
                     try:
-                        from script_crew import analyze_edit_improvements
-                        from memory_manager import save_edit_improvements
-                        rules = analyze_edit_improvements(
+                        from script_crew import analyze_edit_improvements, consolidate_improvement_rules
+                        from memory_manager import get_edit_improvements, save_edit_improvements
+                        new_rules = analyze_edit_improvements(
                             original_draft, edited, script_type, model_id
                         )
-                        if rules:
-                            save_edit_improvements(rules, script_type)
-                            st.session_state["sg_last_learned_rules"] = rules
+                        if new_rules:
+                            current_rules = get_edit_improvements(script_type)
+                            consolidated = consolidate_improvement_rules(
+                                current_rules, new_rules, script_type, model_id
+                            )
+                            save_edit_improvements(consolidated, script_type)
+                            st.session_state["sg_last_learned_rules"] = consolidated
                     except Exception:
                         pass
                 st.session_state.sg_fc_results = []
