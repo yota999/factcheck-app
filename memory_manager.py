@@ -22,7 +22,7 @@ ANGLE_NAMES = {
 AI_ROTATION = [
     ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"),
     ("openai/gpt-4o", "GPT-4o"),
-    ("gemini/gemini-2.5-flash-preview-04-17", "Gemini 2.5 Flash"),
+    ("gemini/gemini-2.5-flash", "Gemini 2.5 Flash"),
     ("xai/grok-3-mini", "Grok 3 Mini"),
 ]
 

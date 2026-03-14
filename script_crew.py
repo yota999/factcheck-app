@@ -18,7 +18,7 @@ except Exception:
 # Claudeが混雑時に自動でGPT-4oにフォールバックするモデルリスト
 _FALLBACK_MODELS = [
     "gpt-4o",
-    "gemini/gemini-2.5-flash-preview-04-17",
+    "gemini/gemini-2.5-flash",
 ]
 
 def _build_kwargs(model: str, prompt: str, temperature: float, max_tokens: int) -> dict:
@@ -566,7 +566,7 @@ def generate_section_variants(section_name: str, section_content: str,
 FC_MODELS = [
     ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6",   "🟣"),
     ("gpt-4o",                      "ChatGPT (GPT-4o)",    "🟢"),
-    ("gemini/gemini-2.5-flash-preview-04-17", "Gemini 2.5 Flash", "🔵"),
+    ("gemini/gemini-2.5-flash", "Gemini 2.5 Flash", "🔵"),
     ("xai/grok-3-mini",             "Grok 3 Mini",         "⚫"),
 ]
 
