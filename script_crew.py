@@ -566,7 +566,7 @@ def generate_section_variants(section_name: str, section_content: str,
 FC_MODELS = [
     ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6",   "🟣"),
     ("gpt-4o",                      "ChatGPT (GPT-4o)",    "🟢"),
-    ("gemini/gemini-2.5-flash", "Gemini 2.5 Flash", "🔵"),
+    ("gemini/gemini-2.0-flash", "Gemini 2.0 Flash", "🔵"),
     ("xai/grok-3-mini",             "Grok 3 Mini",         "⚫"),
 ]
 
@@ -597,7 +597,7 @@ def factcheck_with_model(script: str, model: str, model_name: str) -> dict:
     """単一モデルでファクトチェックを実行"""
     prompt = FC_PROMPT_TEMPLATE.format(script=script[:3000])
     try:
-        text = _call_llm(prompt, model=model, temperature=0.2, max_tokens=2000)
+        text = _call_llm(prompt, model=model, temperature=0.2, max_tokens=4000)
         # 総合判定を抽出
         import re
         m = re.search(r'総合判定.*?(✅|⚠️|❌)', text)
