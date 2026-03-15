@@ -1770,49 +1770,73 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                         )
                         st.session_state["sg_brushup_candidates"] = candidates
                         st.session_state["sg_brushup_selected_blocks"] = selected_blocks
-                        # 前後コンテキストを保存
+                        # 前後コンテキストを全範囲で保存
                         first_idx = min(selected_indices)
                         last_idx = max(selected_indices)
-                        st.session_state["sg_brushup_context"] = {
-                            "prev": blocks[first_idx - 1] if first_idx > 0 else "",
-                            "next": blocks[last_idx + 1] if last_idx < len(blocks) - 1 else "",
-                        }
+                        sel_set = set(selected_indices)
+                        range_start = max(0, first_idx - 1)
+                        range_end = min(len(blocks) - 1, last_idx + 1)
+                        blocks_range = []
+                        for ri in range(range_start, range_end + 1):
+                            if ri < first_idx:
+                                role = "before"
+                            elif ri > last_idx:
+                                role = "after"
+                            elif ri in sel_set:
+                                role = "selected"
+                            else:
+                                role = "between"
+                            blocks_range.append({"text": blocks[ri], "role": role})
+                        st.session_state["sg_brushup_context"] = {"blocks_range": blocks_range}
                     except Exception as e:
                         st.error(f"生成エラー: {e}")
 
-        # ── 候補表示（前後コンテキスト付き）──
+        # ── 候補表示（全範囲コンテキスト付き）──
         candidates = st.session_state.get("sg_brushup_candidates", [])
         original_blocks_bu = st.session_state.get("sg_brushup_selected_blocks", [])
         ctx = st.session_state.get("sg_brushup_context", {})
-        prev_ctx = ctx.get("prev", "")
-        next_ctx = ctx.get("next", "")
+        blocks_range = ctx.get("blocks_range", [])
+
+        # ブロックのrole別スタイル定義
+        _ROLE_STYLE = {
+            "before":   ("▲ 前のブロック（変更なし）",   "#F3F4F6", "#D1D5DB", "#6B7280", "#9CA3AF"),
+            "after":    ("▼ 後のブロック（変更なし）",   "#F3F4F6", "#D1D5DB", "#6B7280", "#9CA3AF"),
+            "between":  ("　 ↕ 変更なし（選択範囲内）",   "#FFF7ED", "#FCD34D", "#78350F", "#B45309"),
+            "selected": ("✏️ 差し替え対象",              "#EFF6FF", "#3B82F6", "#1F2937", "#1D4ED8"),
+        }
 
         if candidates:
             st.markdown("**生成された候補（前後の文脈付き）：**")
-            st.caption("グレー部分は変更されない前後のブロックです。青い部分が差し替え対象の候補です。")
+            st.caption("色の見方 ▶ 青=差し替え対象 ／ オレンジ=選択範囲内で変更なし ／ 灰=選択範囲外（変更なし）")
             for i, cand in enumerate(candidates):
-                # 前後コンテキスト込みの表示
+                # 全範囲ブロックを通しで表示し、selectedの位置に候補テキストを差し込む
                 context_html = ""
-                if prev_ctx:
-                    context_html += (
-                        f'<div style="background:#F3F4F6;border-left:3px solid #D1D5DB;'
-                        f'padding:10px 14px;font-size:0.82rem;color:#6B7280;line-height:1.6;'
-                        f'white-space:pre-wrap;border-radius:0 6px 6px 0;margin-bottom:4px;">'
-                        f'<span style="font-size:0.72rem;font-weight:600;color:#9CA3AF;">▲ 前のブロック（変更なし）</span><br>{prev_ctx}</div>'
+                selected_injected = False  # 候補テキストを一度だけ挿入
+                for blk in blocks_range:
+                    role = blk["role"]
+                    label, bg, border_color, text_color, label_color = _ROLE_STYLE.get(
+                        role, ("", "#F9FAFB", "#E5E7EB", "#374151", "#6B7280")
                     )
-                context_html += (
-                    f'<div style="background:#EFF6FF;border:2px solid #3B82F6;'
-                    f'padding:12px 16px;font-size:0.88rem;color:#1F2937;line-height:1.7;'
-                    f'white-space:pre-wrap;border-radius:8px;margin:4px 0;">'
-                    f'<span style="font-size:0.75rem;font-weight:700;color:#1D4ED8;">✏️ 候補 {i+1}（差し替え対象）</span><br><br>{cand}</div>'
-                )
-                if next_ctx:
-                    context_html += (
-                        f'<div style="background:#F3F4F6;border-left:3px solid #D1D5DB;'
-                        f'padding:10px 14px;font-size:0.82rem;color:#6B7280;line-height:1.6;'
-                        f'white-space:pre-wrap;border-radius:0 6px 6px 0;margin-top:4px;">'
-                        f'<span style="font-size:0.72rem;font-weight:600;color:#9CA3AF;">▼ 次のブロック（変更なし）</span><br>{next_ctx}</div>'
-                    )
+                    if role == "selected":
+                        if not selected_injected:
+                            # selected ブロックの位置に候補テキストを表示
+                            context_html += (
+                                f'<div style="background:{bg};border:2px solid {border_color};'
+                                f'padding:12px 16px;font-size:0.88rem;color:{text_color};line-height:1.7;'
+                                f'white-space:pre-wrap;border-radius:8px;margin:4px 0;">'
+                                f'<span style="font-size:0.72rem;font-weight:700;color:{label_color};">'
+                                f'{label}（候補 {i+1}）</span><br><br>{cand}</div>'
+                            )
+                            selected_injected = True
+                        # 2つ目以降の selected ブロックはスキップ（候補に統合済み）
+                    else:
+                        context_html += (
+                            f'<div style="background:{bg};border-left:3px solid {border_color};'
+                            f'padding:10px 14px;font-size:0.82rem;color:{text_color};line-height:1.6;'
+                            f'white-space:pre-wrap;border-radius:0 6px 6px 0;margin:3px 0;">'
+                            f'<span style="font-size:0.72rem;font-weight:600;color:{label_color};">'
+                            f'{label}</span><br>{blk["text"]}</div>'
+                        )
 
                 col_cand, col_apply = st.columns([5, 1])
                 with col_cand:
