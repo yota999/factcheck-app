@@ -1758,166 +1758,135 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                 n_cands = st.radio("③ 候補数", [2, 3, 4], index=1, horizontal=False, key="sg_brushup_n")
 
             if st.button("🪄 候補を生成する", type="primary", use_container_width=True, key="sg_brushup_btn"):
-                with st.spinner("AIが候補を生成中..."):
+                with st.spinner(f"AIが{len(selected_blocks)}ブロック分の候補を並列生成中..."):
                     try:
                         from script_crew import generate_brushup_candidates
-                        candidates = generate_brushup_candidates(
-                            target_text=combined_preview,
-                            instruction=brushup_instruction,
-                            n_candidates=n_cands,
-                            script_type=script_type,
-                            model=model_id,
-                        )
-                        st.session_state["sg_brushup_candidates"] = candidates
-                        st.session_state["sg_brushup_selected_blocks"] = selected_blocks
-                        # 前後コンテキストを全範囲で保存
-                        first_idx = min(selected_indices)
-                        last_idx = max(selected_indices)
-                        sel_set = set(selected_indices)
-                        range_start = max(0, first_idx - 1)
-                        range_end = min(len(blocks) - 1, last_idx + 1)
-                        blocks_range = []
-                        for ri in range(range_start, range_end + 1):
-                            if ri < first_idx:
-                                role = "before"
-                            elif ri > last_idx:
-                                role = "after"
-                            elif ri in sel_set:
-                                role = "selected"
-                            else:
-                                role = "between"
-                            blocks_range.append({"text": blocks[ri], "role": role})
-                        st.session_state["sg_brushup_context"] = {"blocks_range": blocks_range}
+                        import concurrent.futures as _cf
+
+                        def _gen(block_text):
+                            cands = generate_brushup_candidates(
+                                target_text=block_text,
+                                instruction=brushup_instruction,
+                                n_candidates=n_cands,
+                                script_type=script_type,
+                                model=model_id,
+                            )
+                            return {"original": block_text, "candidates": cands, "applied": False}
+
+                        with _cf.ThreadPoolExecutor(max_workers=len(selected_blocks)) as _ex:
+                            per_block = list(_ex.map(_gen, selected_blocks))
+
+                        st.session_state["sg_brushup_per_block"] = per_block
+                        st.session_state["sg_brushup_candidates"] = []   # 旧キーをクリア
                     except Exception as e:
                         st.error(f"生成エラー: {e}")
 
-        # ── 候補表示（元テキスト → 候補一覧 → ラジオ選択 → 差し替え）──
-        candidates = st.session_state.get("sg_brushup_candidates", [])
-        original_blocks_bu = st.session_state.get("sg_brushup_selected_blocks", [])
-        ctx = st.session_state.get("sg_brushup_context", {})
-        blocks_range = ctx.get("blocks_range", [])
+        # ── 候補表示（ブロックごとに独立表示・個別差し替え）──
+        per_block = st.session_state.get("sg_brushup_per_block", [])
 
-        if candidates:
+        if per_block:
             st.markdown("---")
-
-            # ── ① 元の文章（変更前の参照）──
-            original_text_for_display = "\n\n".join(original_blocks_bu) if original_blocks_bu else ""
-            if original_text_for_display:
+            all_applied = all(b["applied"] for b in per_block)
+            if all_applied:
+                st.success("✅ すべてのブロックの差し替えが完了しました！")
+            else:
+                remaining = sum(1 for b in per_block if not b["applied"])
                 st.markdown(
-                    f'<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;'
-                    f'padding:12px 16px;margin-bottom:16px;">'
-                    f'<div style="font-size:0.72rem;font-weight:600;color:#9CA3AF;margin-bottom:6px;">'
-                    f'変更前の文章</div>'
-                    f'<div style="font-size:0.87rem;color:#6B7280;line-height:1.7;white-space:pre-wrap;">'
-                    f'{original_text_for_display}</div></div>',
+                    f'<div style="background:linear-gradient(135deg,#F0FDF4,#ECFDF5);'
+                    f'border-radius:12px;padding:10px 16px;margin-bottom:14px;border:1px solid #A7F3D0;">'
+                    f'<div style="font-weight:700;color:#065F46;font-size:0.9rem;">'
+                    f'🪄 候補が生成されました — あと {remaining} ブロックの差し替えができます</div>'
+                    f'<div style="color:#047857;font-size:0.8rem;margin-top:2px;">'
+                    f'各ブロックごとにラジオで候補を選んで「差し替える」を押してください。</div></div>',
                     unsafe_allow_html=True,
                 )
 
-            # ── ② 候補を縦に並べて表示（選択中はハイライト）──
-            active_idx = st.session_state.get("sg_active_cand", 0)
-            if active_idx >= len(candidates):
-                active_idx = 0
+            for bi, block_info in enumerate(per_block):
+                original_text = block_info["original"]
+                block_cands   = block_info["candidates"]
+                applied       = block_info["applied"]
 
-            for i, cand in enumerate(candidates):
-                is_active = (i == active_idx)
-                bg     = "#EFF6FF" if is_active else "#FAFAFA"
-                border = "2px solid #3B82F6" if is_active else "1px solid #E5E7EB"
-                label_color = "#1D4ED8" if is_active else "#9CA3AF"
-                badge = (
-                    f'<span style="background:#3B82F6;color:white;font-size:0.7rem;'
-                    f'font-weight:700;padding:2px 8px;border-radius:99px;margin-left:6px;">選択中</span>'
-                    if is_active else ""
-                )
+                if applied:
+                    st.markdown(
+                        f'<div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:10px;'
+                        f'padding:10px 14px;margin-bottom:8px;color:#065F46;font-size:0.85rem;">'
+                        f'✅ ブロック {bi+1}：差し替え済み</div>',
+                        unsafe_allow_html=True,
+                    )
+                    continue
+
+                # ブロックのセパレータ
                 st.markdown(
-                    f'<div style="background:{bg};border:{border};border-radius:10px;'
-                    f'padding:12px 16px;margin-bottom:6px;">'
-                    f'<div style="font-size:0.72rem;font-weight:700;color:{label_color};margin-bottom:6px;">'
-                    f'候補 {i+1}{badge}</div>'
-                    f'<div style="font-size:0.87rem;color:#1F2937;line-height:1.7;white-space:pre-wrap;">'
-                    f'{cand}</div></div>',
+                    f'<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;'
+                    f'padding:14px 18px;margin-bottom:6px;">'
+                    f'<div style="font-size:0.75rem;font-weight:700;color:#64748B;margin-bottom:8px;">'
+                    f'ブロック {bi+1} / {len(per_block)}</div>'
+                    # 変更前
+                    f'<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;'
+                    f'padding:10px 14px;margin-bottom:10px;">'
+                    f'<div style="font-size:0.7rem;font-weight:600;color:#9CA3AF;margin-bottom:4px;">変更前</div>'
+                    f'<div style="font-size:0.86rem;color:#6B7280;line-height:1.65;white-space:pre-wrap;">'
+                    f'{original_text}</div></div></div>',
                     unsafe_allow_html=True,
                 )
 
-            # ── ③ ラジオ選択 ＋ 差し替えボタン（最下部にまとめる）──
-            st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
-            col_radio, col_apply_btn = st.columns([3, 1])
-            with col_radio:
-                new_active = st.radio(
-                    "どの候補に差し替えますか？",
-                    list(range(len(candidates))),
-                    format_func=lambda i: f"候補 {i+1}",
-                    horizontal=True,
-                    index=active_idx,
-                    key="sg_active_cand",
-                )
-            with col_apply_btn:
-                apply_clicked = st.button(
-                    "✅ この候補で差し替える",
-                    type="primary",
-                    key="sg_apply_active",
-                    use_container_width=True,
-                )
+                # 候補を縦に並べる
+                active_key = f"sg_active_cand_{bi}"
+                active_i = st.session_state.get(active_key, 0)
+                if active_i >= len(block_cands):
+                    active_i = 0
 
-            active_cand = candidates[new_active]
+                for ci, cand in enumerate(block_cands):
+                    is_active = (ci == active_i)
+                    bg     = "#EFF6FF" if is_active else "#FAFAFA"
+                    border = "2px solid #3B82F6" if is_active else "1px solid #E5E7EB"
+                    lc     = "#1D4ED8" if is_active else "#9CA3AF"
+                    badge  = ('<span style="background:#3B82F6;color:white;font-size:0.68rem;'
+                              'font-weight:700;padding:1px 7px;border-radius:99px;margin-left:6px;">選択中</span>'
+                              if is_active else "")
+                    st.markdown(
+                        f'<div style="background:{bg};border:{border};border-radius:8px;'
+                        f'padding:10px 14px;margin-bottom:5px;">'
+                        f'<div style="font-size:0.7rem;font-weight:700;color:{lc};margin-bottom:5px;">'
+                        f'候補 {ci+1}{badge}</div>'
+                        f'<div style="font-size:0.86rem;color:#1F2937;line-height:1.65;white-space:pre-wrap;">'
+                        f'{cand}</div></div>',
+                        unsafe_allow_html=True,
+                    )
 
-            # ── ④ 前後コンテキストプレビュー（折りたたみ・必要な時だけ）──
-            if blocks_range:
-                with st.expander("📖 前後の文脈でプレビューする"):
-                    st.caption("青 = 差し替え対象 ／ オレンジ = 選択範囲内で変更なし ／ 灰 = 範囲外")
-                    _RS = {
-                        "before":  ("▲ 前（変更なし）",        "#F3F4F6","#D1D5DB","#6B7280","#9CA3AF"),
-                        "after":   ("▼ 後（変更なし）",        "#F3F4F6","#D1D5DB","#6B7280","#9CA3AF"),
-                        "between": ("↕ 変更なし（範囲内）",    "#FFFBEB","#F59E0B","#78350F","#B45309"),
-                        "selected":("✏️ 差し替え対象",         "#EFF6FF","#3B82F6","#1F2937","#1D4ED8"),
-                    }
-                    ph = ""
-                    injected = False
-                    for blk in blocks_range:
-                        r = blk["role"]
-                        lbl,bg,bc,tc,lc = _RS.get(r,("","#F9FAFB","#E5E7EB","#374151","#6B7280"))
-                        if r == "selected":
-                            if not injected:
-                                ph += (f'<div style="background:{bg};border:2px solid {bc};border-radius:8px;'
-                                       f'padding:11px 15px;font-size:0.87rem;color:{tc};line-height:1.7;'
-                                       f'white-space:pre-wrap;margin:4px 0;">'
-                                       f'<span style="font-size:0.7rem;font-weight:700;color:{lc};">{lbl}</span>'
-                                       f'<br><br>{active_cand}</div>')
-                                injected = True
+                # ラジオ + 差し替えボタン
+                col_r, col_b = st.columns([3, 1])
+                with col_r:
+                    chosen = st.radio(
+                        "どの候補に差し替えますか？",
+                        list(range(len(block_cands))),
+                        format_func=lambda ci: f"候補 {ci+1}",
+                        horizontal=True,
+                        index=active_i,
+                        key=active_key,
+                    )
+                with col_b:
+                    if st.button("✅ 差し替える", type="primary",
+                                 key=f"sg_apply_b{bi}", use_container_width=True):
+                        import re as _re2
+                        current = st.session_state.sg_edited_draft
+                        chosen_text = block_cands[chosen]
+                        if original_text in current:
+                            new_script = current.replace(original_text, chosen_text, 1)
+                            new_script = _re2.sub(r'\n{3,}', '\n\n', new_script).strip()
+                            st.session_state.sg_edited_draft = new_script
+                            st.session_state["sg_brushup_per_block"][bi]["applied"] = True
+                            st.rerun()
                         else:
-                            ph += (f'<div style="background:{bg};border-left:3px solid {bc};'
-                                   f'padding:9px 13px;font-size:0.81rem;color:{tc};line-height:1.55;'
-                                   f'white-space:pre-wrap;border-radius:0 6px 6px 0;margin:3px 0;">'
-                                   f'<span style="font-size:0.7rem;font-weight:600;color:{lc};">{lbl}</span>'
-                                   f'<br>{blk["text"]}</div>')
-                    st.markdown(ph, unsafe_allow_html=True)
+                            st.warning(f"ブロック{bi+1}が台本中に見つかりませんでした。")
 
-            # ── ⑤ 差し替え処理 ──
-            if apply_clicked:
-                import re as _re2
-                current = st.session_state.sg_edited_draft
-                if original_blocks_bu:
-                    new_script = current
-                    if original_blocks_bu[0] in new_script:
-                        new_script = new_script.replace(original_blocks_bu[0], active_cand, 1)
-                    for extra in original_blocks_bu[1:]:
-                        if extra in new_script:
-                            new_script = new_script.replace(extra, "", 1)
-                    new_script = _re2.sub(r'\n{3,}', '\n\n', new_script).strip()
-                    st.session_state.sg_edited_draft = new_script
-                    st.session_state["sg_brushup_candidates"] = []
-                    st.session_state["sg_brushup_selected_blocks"] = []
-                    st.session_state["sg_brushup_checked"] = []
-                    st.session_state["sg_brushup_context"] = {}
-                    st.success("✅ 差し替えました！")
-                    st.rerun()
-                else:
-                    st.warning("元のブロックが見つかりませんでした。台本を直接編集してください。")
+                st.markdown("<br>", unsafe_allow_html=True)
 
             if st.button("✕ キャンセル・やり直す", key="sg_brushup_clear"):
+                st.session_state["sg_brushup_per_block"] = []
                 st.session_state["sg_brushup_candidates"] = []
                 st.session_state["sg_brushup_selected_blocks"] = []
                 st.session_state["sg_brushup_checked"] = []
-                st.session_state["sg_brushup_context"] = {}
                 st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
