@@ -1386,7 +1386,7 @@ border:1px solid #C7D2FE;box-shadow:0 2px 12px rgba(79,70,229,.06);">
 <span style="display:inline-flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
 <span style="background:#F5F3FF;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:600;color:#7C3AED;">🟣 Claude</span>
 <span style="background:#ECFDF5;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:600;color:#059669;">🟢 ChatGPT</span>
-<span style="background:#EFF6FF;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:600;color:#1D4ED8;">🔵 GPT-4o mini</span>
+<span style="background:#EFF6FF;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:600;color:#1D4ED8;">🔵 Gemini</span>
 <span style="background:#F9FAFB;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:600;color:#374151;">⚫ Grok</span>
 </span>
 </p>
@@ -1516,7 +1516,7 @@ border:1px solid #C7D2FE;box-shadow:0 2px 12px rgba(79,70,229,.06);">
         MODEL_STYLES = {
             "Claude Sonnet 4.6":  {"color": "#7C3AED", "bg": "#F5F3FF", "border": "#DDD6FE", "icon": "🟣"},
             "ChatGPT (GPT-4o)":   {"color": "#059669", "bg": "#ECFDF5", "border": "#A7F3D0", "icon": "🟢"},
-            "GPT-4o mini":        {"color": "#1D4ED8", "bg": "#EFF6FF", "border": "#BFDBFE", "icon": "🔵"},
+            "Gemini 2.5 Flash":   {"color": "#1D4ED8", "bg": "#EFF6FF", "border": "#BFDBFE", "icon": "🔵"},
             "Grok 3 Mini":        {"color": "#374151", "bg": "#F9FAFB", "border": "#D1D5DB", "icon": "⚫"},
         }
         VERDICT_MAP = {
