@@ -1354,7 +1354,6 @@ elif step == 4:
     st.markdown('<div class="section-header">Step 5 ／ ファクトチェック・タイトル生成・最終調整・評価</div>', unsafe_allow_html=True)
 
     # ────────────────────────────────────────────────────────────────
-    # A) ファクトチェック未実施
     # 直前に学習したルールがあれば表示
     last_rules = st.session_state.get("sg_last_learned_rules", [])
     if last_rules:
@@ -1374,26 +1373,12 @@ elif step == 4:
         st.session_state["sg_last_learned_rules"] = []  # 一度だけ表示
 
     # ────────────────────────────────────────────────────────────────
+    # A) ファクトチェック未実施 → 自動で開始
     if not st.session_state.sg_fc_results:
-
-        # 台本プレビュー
-        char_preview = len(draft)
-        st.markdown(
-            f'''<div style="background:white;border:1px solid #E5E7EB;border-radius:12px;
-padding:16px 20px;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,.03);">
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-<div style="background:#EEF2FF;border-radius:8px;padding:4px 10px;font-size:0.78rem;color:#4338CA;font-weight:600;">確認する台本</div>
-<div style="font-size:0.78rem;color:#9CA3AF;">{char_preview}文字</div>
-</div>
-</div>''',
-            unsafe_allow_html=True,
-        )
-        with st.expander("台本の全文を確認する"):
-            st.text(draft)
 
         st.markdown("""
 <div style="background:linear-gradient(135deg,#EEF2FF 0%,#F5F3FF 50%,#FDF4FF 100%);
-border-radius:14px;padding:24px 28px;margin:16px 0 24px;
+border-radius:14px;padding:24px 28px;margin:0 0 24px;
 border:1px solid #C7D2FE;box-shadow:0 2px 12px rgba(79,70,229,.06);">
 <h4 style="margin:0 0 10px;color:#1E1B4B;font-size:1.1rem;">🔬 4 AI 並列ファクトチェック</h4>
 <p style="margin:0;color:#4B5563;font-size:0.88rem;line-height:1.7;">
@@ -1408,62 +1393,56 @@ border:1px solid #C7D2FE;box-shadow:0 2px 12px rgba(79,70,229,.06);">
 </div>
 """, unsafe_allow_html=True)
 
-        col_back_fc, col_start_fc = st.columns([1, 3])
-        with col_back_fc:
-            if st.button("← 戻る", key="fc_back"):
-                st.session_state.sg_step = 3
+        result_holder = {}
+
+        def _run_fc():
+            try:
+                from script_crew import factcheck_parallel
+                result_holder["fc"] = factcheck_parallel(draft)
+            except Exception as e:
+                result_holder["fc_error"] = str(e)
+
+        def _run_titles():
+            try:
+                from script_crew import generate_titles
+                result_holder["titles"] = generate_titles(
+                    draft=draft, script_type=script_type, model=model_id
+                )
+            except Exception as e:
+                result_holder["titles"] = f"（タイトル生成エラー: {e}）"
+
+        t_fc = threading.Thread(target=_run_fc, daemon=True)
+        t_ti = threading.Thread(target=_run_titles, daemon=True)
+        t_fc.start(); t_ti.start()
+
+        prog = st.progress(0)
+        status_ph = st.empty()
+        ai_status = st.empty()
+        elapsed = 0
+        MODEL_LABELS = ["Claude", "ChatGPT", "Gemini", "Grok"]
+        while t_fc.is_alive() or t_ti.is_alive():
+            elapsed += 1
+            pct = min(90, elapsed * 2)
+            prog.progress(pct)
+            fc_s = "検証中..." if t_fc.is_alive() else "完了"
+            ti_s = "生成中..." if t_ti.is_alive() else "完了"
+            status_ph.info(f"ファクトチェック: **{fc_s}** ｜ タイトル生成: **{ti_s}**")
+            dots = "." * ((elapsed % 3) + 1)
+            ai_status.caption(f"4つのAIが並列で検証中{dots} {' / '.join(MODEL_LABELS)}")
+            time.sleep(1)
+        t_fc.join(); t_ti.join()
+        prog.progress(100)
+        status_ph.empty(); ai_status.empty()
+
+        if "fc_error" in result_holder:
+            st.error(f"ファクトチェックエラー: {result_holder['fc_error']}")
+            if st.button("🔄 やり直す", key="fc_retry"):
                 st.rerun()
-        with col_start_fc:
-            if st.button("🚀 ファクトチェック＋タイトル生成を開始", type="primary",
-                         use_container_width=True):
-                result_holder = {}
-
-                def _run_fc():
-                    try:
-                        from script_crew import factcheck_parallel
-                        result_holder["fc"] = factcheck_parallel(draft)
-                    except Exception as e:
-                        result_holder["fc_error"] = str(e)
-
-                def _run_titles():
-                    try:
-                        from script_crew import generate_titles
-                        result_holder["titles"] = generate_titles(
-                            draft=draft, script_type=script_type, model=model_id
-                        )
-                    except Exception as e:
-                        result_holder["titles"] = f"（タイトル生成エラー: {e}）"
-
-                t_fc = threading.Thread(target=_run_fc, daemon=True)
-                t_ti = threading.Thread(target=_run_titles, daemon=True)
-                t_fc.start(); t_ti.start()
-
-                prog = st.progress(0)
-                status_ph = st.empty()
-                ai_status = st.empty()
-                elapsed = 0
-                MODEL_LABELS = ["Claude", "ChatGPT", "Gemini", "Grok"]
-                while t_fc.is_alive() or t_ti.is_alive():
-                    elapsed += 1
-                    pct = min(90, elapsed * 2)
-                    prog.progress(pct)
-                    fc_s = "検証中..." if t_fc.is_alive() else "完了"
-                    ti_s = "生成中..." if t_ti.is_alive() else "完了"
-                    status_ph.info(f"ファクトチェック: **{fc_s}** ｜ タイトル生成: **{ti_s}**")
-                    dots = "." * ((elapsed % 3) + 1)
-                    ai_status.caption(f"4つのAIが並列で検証中{dots} {' / '.join(MODEL_LABELS)}")
-                    time.sleep(1)
-                t_fc.join(); t_ti.join()
-                prog.progress(100)
-                status_ph.empty(); ai_status.empty()
-
-                if "fc_error" in result_holder:
-                    st.error(f"ファクトチェックエラー: {result_holder['fc_error']}")
-                else:
-                    st.session_state.sg_fc_results = result_holder.get("fc", [])
-                    st.session_state.sg_titles = result_holder.get("titles", "")
-                    st.session_state["sg_final_sections"] = []
-                    st.rerun()
+        else:
+            st.session_state.sg_fc_results = result_holder.get("fc", [])
+            st.session_state.sg_titles = result_holder.get("titles", "")
+            st.session_state["sg_final_sections"] = []
+            st.rerun()
 
     # ────────────────────────────────────────────────────────────────
     # B) ファクトチェック完了 → 結果表示 + 最終調整 + 評価
@@ -1631,188 +1610,6 @@ border:1px solid #C7D2FE;box-shadow:0 2px 12px rgba(79,70,229,.06);">
                 st.caption(f"📝 編集後: {char_after}文字（{char_after - target_max}文字オーバー）")
             else:
                 st.caption(f"📝 編集後: {char_after}文字 ✓")
-
-        col_save_edit, col_dl_spacer = st.columns([1, 3])
-        with col_save_edit:
-            if st.button("💾 編集内容を保存", key="save_final_edit", use_container_width=True):
-                st.session_state.sg_edited_draft = edited_final
-                st.success("保存しました")
-                st.rerun()
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # ダウンロードボタン
-        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        final_for_dl = st.session_state.sg_edited_draft
-        col_dl1, col_dl2 = st.columns(2)
-        with col_dl1:
-            st.download_button(
-                "📥 台本をダウンロード（.txt）",
-                data=final_for_dl,
-                file_name=f"script_{script_type}_{ts}.txt",
-                mime="text/plain", use_container_width=True,
-            )
-        with col_dl2:
-            fc_text = "\n\n".join(
-                f"=== {r.get('model_name','')} ===\n{r.get('text','')}"
-                for r in fc_results if r
-            )
-            combined = (f"=== 完成台本 ===\n{final_for_dl}\n\n"
-                        f"=== タイトル・サムネイル案 ===\n{titles}\n\n"
-                        f"=== ファクトチェック結果 ===\n{fc_text}")
-            st.download_button(
-                "📥 全データをダウンロード（.txt）",
-                data=combined,
-                file_name=f"script_full_{script_type}_{ts}.txt",
-                mime="text/plain", use_container_width=True,
-            )
-
-        st.markdown("---")
-
-        # ─ 評価フロー ────────────────────────────────────────────────
-        final_script_for_rating = st.session_state.sg_edited_draft
-        theme = (st.session_state.sg_selected_themes[0]
-                 if st.session_state.sg_selected_themes else "不明")
-        angle_key = st.session_state.sg_current_angle[0]
-        rating_mode = st.session_state.sg_rating_mode
-
-        if rating_mode is None:
-            st.markdown("""
-<div class="rating-card" style="background:linear-gradient(135deg,#F0FDF4,#ECFDF5);border-color:#A7F3D0;">
-<h4 style="margin:0 0 8px;color:#065F46;font-size:1.05rem;">この台本を評価してください</h4>
-<p style="margin:0;color:#047857;font-size:0.86rem;line-height:1.6;">
-評価結果をAIが分析し、次回の台本生成に自動で反映されます。<br>
-好評ポイント・改善パターンを学習して、あなた好みの台本精度が向上します。
-</p>
-</div>
-""", unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-            col_good, col_bad = st.columns(2)
-            with col_good:
-                if st.button("👍 良い台本だった", type="primary", use_container_width=True):
-                    st.session_state.sg_rating_mode = "good"
-                    st.rerun()
-            with col_bad:
-                if st.button("👎 改善が必要", use_container_width=True):
-                    st.session_state.sg_rating_mode = "bad"
-                    st.rerun()
-
-        elif rating_mode == "good":
-            if not st.session_state.sg_learned_elements:
-                with st.spinner("台本の好評ポイントをAIが分析中..."):
-                    try:
-                        from script_crew import analyze_good_elements
-                        elements = analyze_good_elements(final_script_for_rating, script_type, model_id)
-                    except Exception:
-                        elements = []
-                    try:
-                        from memory_manager import save_script, record_theme_used
-                        from memory_manager import _load_history, _save_history, _type_data
-                        save_script(script=final_script_for_rating, rating="good", theme=theme,
-                                    script_type=script_type, angle=angle_key)
-                        record_theme_used(theme=theme, script_type=script_type, angle=angle_key)
-                        if elements:
-                            history = _load_history()
-                            td = _type_data(history, script_type)
-                            for el in elements:
-                                if el not in td["good_elements"]:
-                                    td["good_elements"].append(el)
-                            td["good_elements"] = td["good_elements"][-30:]
-                            _save_history(history)
-                    except Exception as e:
-                        st.error(f"保存エラー: {e}")
-                    st.session_state.sg_learned_elements = elements if elements else ["（分析データなし）"]
-                    st.session_state.sg_saved = True
-                    st.rerun()
-            else:
-                st.markdown("""
-<div class="rating-card" style="background:#ECFDF5;border-color:#6EE7B7;">
-<h4 style="color:#065F46;margin:0 0 8px;">好評として保存しました</h4>
-<p style="color:#047857;margin:0;font-size:0.86rem;">次回の台本生成に自動反映されます</p>
-</div>
-""", unsafe_allow_html=True)
-                elements = st.session_state.sg_learned_elements
-                if elements and elements != ["（分析データなし）"]:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    st.markdown("**今回学習した好評ポイント**")
-                    for el in elements:
-                        st.markdown(
-                            f'<div style="background:#F0FDF4;border-left:3px solid #059669;'
-                            f'padding:10px 14px;border-radius:0 8px 8px 0;margin:6px 0;font-size:0.88rem;'
-                            f'line-height:1.6;">'
-                            f'{el}</div>',
-                            unsafe_allow_html=True,
-                        )
-
-        elif rating_mode == "bad":
-            if not st.session_state.sg_saved:
-                st.markdown("""
-<div class="rating-card" style="background:#FEF2F2;border-color:#FECACA;">
-<h4 style="color:#991B1B;margin:0 0 6px;">改善フィードバック</h4>
-<p style="color:#B91C1C;margin:0;font-size:0.86rem;">何が問題だったか教えてください。次回の生成に反映されます。</p>
-</div>
-""", unsafe_allow_html=True)
-                st.markdown("<br>", unsafe_allow_html=True)
-                ng_themes = st.multiselect(
-                    "NGにするテーマ", options=st.session_state.sg_selected_themes,
-                    default=[], key="sg_bad_ng_themes",
-                )
-                ng_ideas = st.multiselect(
-                    "NGにするアイデア", options=st.session_state.sg_selected_ideas or [],
-                    default=[], key="sg_bad_ng_ideas",
-                )
-                bad_note = st.text_input(
-                    "悪かった点を一言で（任意）",
-                    placeholder="例：感情訴求が弱かった、情報が古かった など",
-                    key="sg_bad_note",
-                )
-                if st.button("フィードバックを保存して学習させる", type="primary",
-                             use_container_width=True):
-                    with st.spinner("AIが改善パターンを分析中..."):
-                        try:
-                            from script_crew import analyze_bad_pattern
-                            pattern = analyze_bad_pattern(
-                                final_script_for_rating, script_type, bad_note, model_id)
-                        except Exception:
-                            pattern = bad_note if bad_note else ""
-                        try:
-                            from memory_manager import (save_script, record_theme_used,
-                                add_rejected_themes, add_rejected_ideas,
-                                _load_history, _save_history, _type_data)
-                            save_script(script=final_script_for_rating, rating="bad",
-                                        theme=theme, script_type=script_type, angle=angle_key)
-                            record_theme_used(theme=theme, script_type=script_type, angle=angle_key)
-                            if ng_themes:
-                                add_rejected_themes(ng_themes, script_type)
-                            if ng_ideas:
-                                add_rejected_ideas(ng_ideas, script_type)
-                            if pattern:
-                                history = _load_history()
-                                td = _type_data(history, script_type)
-                                if pattern not in td["bad_patterns"]:
-                                    td["bad_patterns"].append(pattern)
-                                td["bad_patterns"] = td["bad_patterns"][-30:]
-                                _save_history(history)
-                        except Exception as e:
-                            st.error(f"保存エラー: {e}")
-                    st.session_state.sg_learned_pattern = pattern
-                    st.session_state.sg_saved = True
-                    st.rerun()
-            else:
-                st.markdown("""
-<div class="rating-card" style="background:#FFFBEB;border-color:#FDE68A;">
-<h4 style="color:#92400E;margin:0 0 6px;">改善フィードバックを保存しました</h4>
-<p style="color:#B45309;margin:0;font-size:0.86rem;">次回の生成に反映されます</p>
-</div>
-""", unsafe_allow_html=True)
-                if st.session_state.sg_learned_pattern:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    st.markdown(
-                        f'<div style="background:#FFFBEB;border-left:3px solid #D97706;'
-                        f'padding:10px 14px;border-radius:0 8px 8px 0;font-size:0.88rem;line-height:1.6;">'
-                        f'<b>学習した改善パターン:</b> {st.session_state.sg_learned_pattern}</div>',
-                        unsafe_allow_html=True,
-                    )
 
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 新しい台本を生成する", use_container_width=True):
