@@ -1665,8 +1665,9 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
 
         st.session_state["sg_brushup_checked"] = new_checked
 
-        # 選択中ブロックを取得
-        selected_blocks = [blocks[i] for i in new_checked if i < len(blocks)]
+        # 選択中ブロックを取得（インデックスも保持して前後コンテキスト用に使う）
+        selected_indices = [i for i in new_checked if i < len(blocks)]
+        selected_blocks = [blocks[i] for i in selected_indices]
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1686,19 +1687,17 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
 
             col_preset, col_n = st.columns([3, 1])
             with col_preset:
-                BRUSHUP_PRESETS = [
-                    "別のニュアンスで書き直す",
-                    "もっと感情的・共感的に",
-                    "より簡潔にまとめる",
-                    "インパクトを強くする",
-                    "より自然な話し言葉に",
-                    "専門性・説得力を高める",
-                    "冒頭フックをより刺さる表現に",
-                    "初心者・一般の人にも分かりやすく",
-                    "ダイエット初心者でも分かる言い回しに",
-                    "専門用語をなくして平易な表現に",
-                    "カスタム指示を入力...",
-                ]
+                # ── プリセット読み込み（Supabase永続化） ──
+                try:
+                    from memory_manager import get_brushup_presets
+                    _loaded_presets = get_brushup_presets()
+                except Exception:
+                    _loaded_presets = [
+                        "別のニュアンスで書き直す", "もっと感情的・共感的に",
+                        "より簡潔にまとめる", "インパクトを強くする",
+                    ]
+                BRUSHUP_PRESETS = _loaded_presets + ["カスタム指示を入力..."]
+
                 preset = st.selectbox("② 改善の方向性", BRUSHUP_PRESETS, key="sg_brushup_preset")
                 if preset == "カスタム指示を入力...":
                     custom_inst = st.text_input(
@@ -1709,6 +1708,52 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                     brushup_instruction = custom_inst if custom_inst else "より良い表現に書き直す"
                 else:
                     brushup_instruction = preset
+
+                # ── 方向性を管理するエクスパンダー ──
+                with st.expander("⚙️ 方向性の選択肢を管理する"):
+                    st.caption("選択肢の追加・削除ができます。変更はSupabaseに保存されます。")
+                    # 追加
+                    col_new, col_add = st.columns([4, 1])
+                    with col_new:
+                        new_preset_text = st.text_input(
+                            "新しい方向性を追加",
+                            placeholder="例：関西弁に変換する",
+                            key="sg_brushup_new_preset",
+                            label_visibility="collapsed",
+                        )
+                    with col_add:
+                        if st.button("追加", key="sg_brushup_add_preset", use_container_width=True):
+                            if new_preset_text.strip():
+                                try:
+                                    from memory_manager import get_brushup_presets, save_brushup_presets
+                                    current_presets = get_brushup_presets()
+                                    if new_preset_text.strip() not in current_presets:
+                                        current_presets.append(new_preset_text.strip())
+                                        save_brushup_presets(current_presets)
+                                        st.success("追加しました")
+                                        st.rerun()
+                                except Exception as e:
+                                    st.error(f"保存エラー: {e}")
+                    # 現在の一覧と削除ボタン
+                    st.markdown("**現在の選択肢：**")
+                    for pi, p in enumerate(_loaded_presets):
+                        col_pl, col_pd = st.columns([5, 1])
+                        with col_pl:
+                            st.markdown(
+                                f'<div style="font-size:0.85rem;padding:4px 8px;'
+                                f'background:#F8FAFC;border-radius:6px;margin:2px 0;">{p}</div>',
+                                unsafe_allow_html=True,
+                            )
+                        with col_pd:
+                            if st.button("削除", key=f"sg_del_preset_{pi}", use_container_width=True):
+                                try:
+                                    from memory_manager import get_brushup_presets, save_brushup_presets
+                                    updated = [x for x in get_brushup_presets() if x != p]
+                                    save_brushup_presets(updated)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"削除エラー: {e}")
+
             with col_n:
                 n_cands = st.radio("③ 候補数", [2, 3, 4], index=1, horizontal=False, key="sg_brushup_n")
 
@@ -1725,45 +1770,75 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                         )
                         st.session_state["sg_brushup_candidates"] = candidates
                         st.session_state["sg_brushup_selected_blocks"] = selected_blocks
+                        # 前後コンテキストを保存
+                        first_idx = min(selected_indices)
+                        last_idx = max(selected_indices)
+                        st.session_state["sg_brushup_context"] = {
+                            "prev": blocks[first_idx - 1] if first_idx > 0 else "",
+                            "next": blocks[last_idx + 1] if last_idx < len(blocks) - 1 else "",
+                        }
                     except Exception as e:
                         st.error(f"生成エラー: {e}")
 
-        # ── 候補表示 ──
+        # ── 候補表示（前後コンテキスト付き）──
         candidates = st.session_state.get("sg_brushup_candidates", [])
         original_blocks_bu = st.session_state.get("sg_brushup_selected_blocks", [])
+        ctx = st.session_state.get("sg_brushup_context", {})
+        prev_ctx = ctx.get("prev", "")
+        next_ctx = ctx.get("next", "")
+
         if candidates:
-            st.markdown("**生成された候補（差し替えたい候補の「差し替える」を押してください）：**")
+            st.markdown("**生成された候補（前後の文脈付き）：**")
+            st.caption("グレー部分は変更されない前後のブロックです。青い部分が差し替え対象の候補です。")
             for i, cand in enumerate(candidates):
+                # 前後コンテキスト込みの表示
+                context_html = ""
+                if prev_ctx:
+                    context_html += (
+                        f'<div style="background:#F3F4F6;border-left:3px solid #D1D5DB;'
+                        f'padding:10px 14px;font-size:0.82rem;color:#6B7280;line-height:1.6;'
+                        f'white-space:pre-wrap;border-radius:0 6px 6px 0;margin-bottom:4px;">'
+                        f'<span style="font-size:0.72rem;font-weight:600;color:#9CA3AF;">▲ 前のブロック（変更なし）</span><br>{prev_ctx}</div>'
+                    )
+                context_html += (
+                    f'<div style="background:#EFF6FF;border:2px solid #3B82F6;'
+                    f'padding:12px 16px;font-size:0.88rem;color:#1F2937;line-height:1.7;'
+                    f'white-space:pre-wrap;border-radius:8px;margin:4px 0;">'
+                    f'<span style="font-size:0.75rem;font-weight:700;color:#1D4ED8;">✏️ 候補 {i+1}（差し替え対象）</span><br><br>{cand}</div>'
+                )
+                if next_ctx:
+                    context_html += (
+                        f'<div style="background:#F3F4F6;border-left:3px solid #D1D5DB;'
+                        f'padding:10px 14px;font-size:0.82rem;color:#6B7280;line-height:1.6;'
+                        f'white-space:pre-wrap;border-radius:0 6px 6px 0;margin-top:4px;">'
+                        f'<span style="font-size:0.72rem;font-weight:600;color:#9CA3AF;">▼ 次のブロック（変更なし）</span><br>{next_ctx}</div>'
+                    )
+
                 col_cand, col_apply = st.columns([5, 1])
                 with col_cand:
                     st.markdown(
-                        f'<div style="background:white;border:1px solid #BFDBFE;border-radius:10px;'
-                        f'padding:12px 16px;margin-bottom:4px;">'
-                        f'<div style="font-size:0.75rem;color:#1D4ED8;font-weight:600;margin-bottom:6px;">候補 {i+1}</div>'
-                        f'<div style="font-size:0.88rem;color:#1F2937;line-height:1.7;white-space:pre-wrap;">{cand}</div>'
-                        f'</div>',
+                        f'<div style="margin-bottom:8px;">{context_html}</div>',
                         unsafe_allow_html=True,
                     )
                 with col_apply:
-                    st.markdown("<br><br>", unsafe_allow_html=True)
+                    st.markdown("<br>" * 4, unsafe_allow_html=True)
                     if st.button("✅ 差し替える", key=f"sg_apply_cand_{i}", use_container_width=True):
                         import re as _re2
                         current = st.session_state.sg_edited_draft
                         if original_blocks_bu:
                             new_script = current
-                            # 最初のブロックを候補に置換、残りは削除
                             first_block = original_blocks_bu[0]
                             if first_block in new_script:
                                 new_script = new_script.replace(first_block, cand, 1)
                             for extra_block in original_blocks_bu[1:]:
                                 if extra_block in new_script:
                                     new_script = new_script.replace(extra_block, "", 1)
-                            # 連続する空行を整理
                             new_script = _re2.sub(r'\n{3,}', '\n\n', new_script).strip()
                             st.session_state.sg_edited_draft = new_script
                             st.session_state["sg_brushup_candidates"] = []
                             st.session_state["sg_brushup_selected_blocks"] = []
                             st.session_state["sg_brushup_checked"] = []
+                            st.session_state["sg_brushup_context"] = {}
                             st.success("差し替えました！")
                             st.rerun()
                         else:
@@ -1773,6 +1848,7 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                 st.session_state["sg_brushup_candidates"] = []
                 st.session_state["sg_brushup_selected_blocks"] = []
                 st.session_state["sg_brushup_checked"] = []
+                st.session_state["sg_brushup_context"] = {}
                 st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)

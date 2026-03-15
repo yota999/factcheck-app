@@ -301,6 +301,33 @@ def save_edit_improvements(rules: list, script_type: str):
     _save_history(history)
 
 
+DEFAULT_BRUSHUP_PRESETS = [
+    "別のニュアンスで書き直す",
+    "もっと感情的・共感的に",
+    "より簡潔にまとめる",
+    "インパクトを強くする",
+    "より自然な話し言葉に",
+    "専門性・説得力を高める",
+    "冒頭フックをより刺さる表現に",
+    "初心者・一般の人にも分かりやすく",
+    "ダイエット初心者でも分かる言い回しに",
+    "専門用語をなくして平易な表現に",
+]
+
+
+def get_brushup_presets() -> list:
+    """ブラッシュアッププリセット一覧を取得（カスタム保存があればそれを返す）"""
+    history = _load_history()
+    return history.get("brushup_presets", list(DEFAULT_BRUSHUP_PRESETS))
+
+
+def save_brushup_presets(presets: list):
+    """ブラッシュアッププリセット一覧を保存"""
+    history = _load_history()
+    history["brushup_presets"] = [p for p in presets if p.strip()]
+    _save_history(history)
+
+
 def add_rejected_ideas(ideas: list, script_type: str):
     """アイデアをNG登録する（タイプ別・重複なし・最新100件保持）"""
     if not ideas:
