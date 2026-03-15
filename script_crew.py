@@ -677,6 +677,41 @@ def generate_brushup_candidates(
     return candidates[:n_candidates]
 
 
+def analyze_brushup_replacements(
+    replacements: list,  # [{"original_before": "...", "chosen": "..."}]
+    script_type: str,
+    model: str,
+) -> list:
+    """差し替えペアからNGパターンを抽出して返す（今後の生成で避けるべき表現）"""
+    if not replacements:
+        return []
+    type_name = "YouTube台本" if script_type == "youtube" else "リール台本"
+    pairs_text = "\n\n".join([
+        f"【修正前】\n{r['original_before']}\n\n【修正後】\n{r['chosen']}"
+        for r in replacements
+    ])
+    prompt = f"""以下は{type_name}の「修正前→修正後」のペアです。
+修正前の文章に含まれていた「問題のある表現・パターン・書き方」を分析し、
+今後の台本生成で避けるべきNGパターンを箇条書きでリストアップしてください。
+
+{pairs_text}
+
+【出力ルール】
+- 「〜という表現は避ける」「〜のような書き方はNG」という形式で具体的に
+- 10件以内
+- 箇条書き（各行を「- 」で始める）
+- 説明や前置きは不要、箇条書きのみ出力"""
+    text = _call_llm(prompt, model=model, temperature=0.3, max_tokens=800)
+    patterns = []
+    for line in text.split("\n"):
+        line = line.strip()
+        if line.startswith(("-", "•", "・", "●")):
+            p = line.lstrip("-•・● ").strip()
+            if p:
+                patterns.append(p)
+    return patterns[:10]
+
+
 # ── 台本の評価・分析 ──────────────────────────────────────────────────
 
 def analyze_good_elements(script: str, script_type: str, model: str) -> list:

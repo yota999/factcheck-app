@@ -1770,7 +1770,7 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                                 script_type=script_type,
                                 model=model_id,
                             )
-                            return {"original": block_text, "candidates": cands, "applied": False}
+                            return {"original": block_text, "original_before": block_text, "candidates": cands, "applied": False}
 
                         with _cf.ThreadPoolExecutor(max_workers=len(selected_blocks)) as _ex:
                             per_block = list(_ex.map(_gen, selected_blocks))
@@ -1865,6 +1865,7 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                                     new_script = _re2.sub(r'\n{3,}', '\n\n', new_script).strip()
                                     st.session_state.sg_edited_draft = new_script
                                     st.session_state["sg_brushup_per_block"][bi]["applied"] = True
+                                    st.session_state["sg_brushup_per_block"][bi]["chosen"] = chosen_text
                                     st.session_state["sg_brushup_per_block"][bi]["original"] = chosen_text
                                     st.rerun()
                                 else:
@@ -1878,12 +1879,95 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                     )
 
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("✕ キャンセル・やり直す", key="sg_brushup_clear"):
-                st.session_state["sg_brushup_per_block"] = []
-                st.session_state["sg_brushup_candidates"] = []
-                st.session_state["sg_brushup_selected_blocks"] = []
-                st.session_state["sg_brushup_checked"] = []
-                st.rerun()
+
+            # 全ブロック差し替え済みなら「台本完了」ボタンを表示
+            all_applied = all(b.get("applied", False) for b in per_block)
+            if all_applied:
+                st.markdown(
+                    '<div style="background:linear-gradient(135deg,#F0FDF4,#ECFDF5);'
+                    'border:1px solid #A7F3D0;border-radius:12px;padding:14px 18px;margin-bottom:12px;">'
+                    '<div style="font-weight:700;color:#065F46;font-size:0.95rem;">🎉 すべての差し替えが完了しました</div>'
+                    '<div style="color:#047857;font-size:0.82rem;margin-top:4px;">'
+                    '「台本完了」を押すと、修正内容をAIが分析してNGパターンと改善ルールを学習します。次回以降の生成に自動反映されます。</div></div>',
+                    unsafe_allow_html=True,
+                )
+                if st.button("🎓 台本完了 — 学習データとして保存", type="primary",
+                             key="sg_brushup_done", use_container_width=True):
+                    with st.spinner("修正内容を分析・学習中..."):
+                        try:
+                            # 差し替えペアを収集
+                            replacements = [
+                                {"original_before": b["original_before"], "chosen": b.get("chosen", b["original"])}
+                                for b in per_block if b.get("applied")
+                            ]
+                            # NGパターンを抽出して保存
+                            from script_crew import analyze_brushup_replacements
+                            ng_patterns = analyze_brushup_replacements(replacements, script_type, model_id)
+                            if ng_patterns:
+                                from memory_manager import _load_history, _save_history, _type_data
+                                history = _load_history()
+                                td = _type_data(history, script_type)
+                                for p in ng_patterns:
+                                    if p not in td["bad_patterns"]:
+                                        td["bad_patterns"].append(p)
+                                td["bad_patterns"] = td["bad_patterns"][-30:]
+                                _save_history(history)
+
+                            # 改善ルールも統合（edit_improvements）
+                            from script_crew import analyze_edit_improvements, consolidate_improvement_rules
+                            from memory_manager import get_edit_improvements, save_edit_improvements
+                            combined_before = "\n\n".join(r["original_before"] for r in replacements)
+                            combined_after  = "\n\n".join(r["chosen"] for r in replacements)
+                            new_rules = analyze_edit_improvements(combined_before, combined_after, script_type, model_id)
+                            if new_rules:
+                                current_rules = get_edit_improvements(script_type)
+                                consolidated = consolidate_improvement_rules(current_rules, new_rules, script_type, model_id)
+                                save_edit_improvements(consolidated, script_type)
+
+                            # 完成台本を"good"として保存
+                            from memory_manager import save_script, record_theme_used
+                            theme = (st.session_state.sg_selected_themes[0]
+                                     if st.session_state.sg_selected_themes else "不明")
+                            angle_key = st.session_state.sg_current_angle[0]
+                            save_script(script=st.session_state.sg_edited_draft, rating="good",
+                                        theme=theme, script_type=script_type, angle=angle_key)
+                            record_theme_used(theme=theme, script_type=script_type, angle=angle_key)
+
+                            st.session_state["sg_brushup_learned_ng"] = ng_patterns
+                        except Exception as e:
+                            st.error(f"学習エラー: {e}")
+
+                    # 結果を表示してブラッシュアップ状態をクリア
+                    ng_list = st.session_state.pop("sg_brushup_learned_ng", [])
+                    st.session_state["sg_brushup_per_block"] = []
+                    st.session_state["sg_brushup_candidates"] = []
+                    st.session_state["sg_brushup_selected_blocks"] = []
+                    st.session_state["sg_brushup_checked"] = []
+                    if ng_list:
+                        ng_html = "".join(
+                            f'<div style="display:flex;gap:8px;margin-bottom:4px;">'
+                            f'<span style="color:#DC2626;flex-shrink:0;">✕</span>'
+                            f'<span style="font-size:0.83rem;color:#991B1B;">{p}</span></div>'
+                            for p in ng_list
+                        )
+                        st.markdown(
+                            f'<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;'
+                            f'padding:14px 18px;margin-top:12px;">'
+                            f'<div style="font-weight:700;color:#991B1B;margin-bottom:8px;">📚 学習したNGパターン（次回から回避）</div>'
+                            f'{ng_html}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    st.success("✅ 学習完了！次回の台本生成に反映されます。")
+                    st.rerun()
+
+            col_cancel, _ = st.columns([2, 5])
+            with col_cancel:
+                if st.button("✕ キャンセル・やり直す", key="sg_brushup_clear"):
+                    st.session_state["sg_brushup_per_block"] = []
+                    st.session_state["sg_brushup_candidates"] = []
+                    st.session_state["sg_brushup_selected_blocks"] = []
+                    st.session_state["sg_brushup_checked"] = []
+                    st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 新しい台本を生成する", use_container_width=True):
