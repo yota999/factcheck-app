@@ -566,7 +566,7 @@ def generate_section_variants(section_name: str, section_content: str,
 FC_MODELS = [
     ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6",   "🟣"),
     ("gpt-4o",                      "ChatGPT (GPT-4o)",    "🟢"),
-    ("gemini/gemini-1.5-flash", "Gemini 1.5 Flash", "🔵"),
+    ("gpt-4o-mini",                 "GPT-4o mini",         "🔵"),
     ("xai/grok-3-mini",             "Grok 3 Mini",         "⚫"),
 ]
 
