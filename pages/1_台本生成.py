@@ -1689,7 +1689,7 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                 # ── プリセット読み込み（Supabase永続化） ──
                 try:
                     from memory_manager import get_brushup_presets
-                    _loaded_presets = get_brushup_presets()
+                    _loaded_presets = get_brushup_presets(script_type)
                 except Exception:
                     _loaded_presets = [
                         "別のニュアンスで書き直す", "もっと感情的・共感的に",
@@ -1725,10 +1725,10 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                             if new_preset_text.strip():
                                 try:
                                     from memory_manager import get_brushup_presets, save_brushup_presets
-                                    current_presets = get_brushup_presets()
+                                    current_presets = get_brushup_presets(script_type)
                                     if new_preset_text.strip() not in current_presets:
                                         current_presets.append(new_preset_text.strip())
-                                        save_brushup_presets(current_presets)
+                                        save_brushup_presets(current_presets, script_type)
                                         st.success("追加しました")
                                         st.rerun()
                                 except Exception as e:
@@ -1747,8 +1747,8 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                             if st.button("削除", key=f"sg_del_preset_{pi}", use_container_width=True):
                                 try:
                                     from memory_manager import get_brushup_presets, save_brushup_presets
-                                    updated = [x for x in get_brushup_presets() if x != p]
-                                    save_brushup_presets(updated)
+                                    updated = [x for x in get_brushup_presets(script_type) if x != p]
+                                    save_brushup_presets(updated, script_type)
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"削除エラー: {e}")

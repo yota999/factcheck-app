@@ -315,16 +315,18 @@ DEFAULT_BRUSHUP_PRESETS = [
 ]
 
 
-def get_brushup_presets() -> list:
-    """ブラッシュアッププリセット一覧を取得（カスタム保存があればそれを返す）"""
+def get_brushup_presets(script_type: str) -> list:
+    """ブラッシュアッププリセット一覧を取得（タイプ別・カスタム保存があればそれを返す）"""
     history = _load_history()
-    return history.get("brushup_presets", list(DEFAULT_BRUSHUP_PRESETS))
+    td = _type_data(history, script_type)
+    return td.get("brushup_presets", list(DEFAULT_BRUSHUP_PRESETS))
 
 
-def save_brushup_presets(presets: list):
-    """ブラッシュアッププリセット一覧を保存"""
+def save_brushup_presets(presets: list, script_type: str):
+    """ブラッシュアッププリセット一覧を保存（タイプ別）"""
     history = _load_history()
-    history["brushup_presets"] = [p for p in presets if p.strip()]
+    td = _type_data(history, script_type)
+    td["brushup_presets"] = [p for p in presets if p.strip()]
     _save_history(history)
 
 
