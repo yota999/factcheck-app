@@ -1791,7 +1791,7 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                     except Exception as e:
                         st.error(f"生成エラー: {e}")
 
-        # ── 候補表示（ラジオ切り替え＋コンテキスト1回表示）──
+        # ── 候補表示（元テキスト → 候補一覧 → ラジオ選択 → 差し替え）──
         candidates = st.session_state.get("sg_brushup_candidates", [])
         original_blocks_bu = st.session_state.get("sg_brushup_selected_blocks", [])
         ctx = st.session_state.get("sg_brushup_context", {})
@@ -1799,26 +1799,56 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
 
         if candidates:
             st.markdown("---")
-            st.markdown("""
-<div style="background:linear-gradient(135deg,#F0FDF4,#ECFDF5);border-radius:12px;
-padding:12px 18px;margin-bottom:14px;border:1px solid #A7F3D0;">
-<div style="font-weight:700;color:#065F46;font-size:0.95rem;">🪄 候補が生成されました</div>
-<div style="color:#047857;font-size:0.82rem;margin-top:4px;">
-ラジオボタンで候補を切り替えると、下のプレビューがリアルタイムで更新されます。
-</div>
-</div>
-""", unsafe_allow_html=True)
 
-            # ── ① 候補選択ラジオ ＋ 差し替えボタン ──
+            # ── ① 元の文章（変更前の参照）──
+            original_text_for_display = "\n\n".join(original_blocks_bu) if original_blocks_bu else ""
+            if original_text_for_display:
+                st.markdown(
+                    f'<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;'
+                    f'padding:12px 16px;margin-bottom:16px;">'
+                    f'<div style="font-size:0.72rem;font-weight:600;color:#9CA3AF;margin-bottom:6px;">'
+                    f'変更前の文章</div>'
+                    f'<div style="font-size:0.87rem;color:#6B7280;line-height:1.7;white-space:pre-wrap;">'
+                    f'{original_text_for_display}</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+            # ── ② 候補を縦に並べて表示（選択中はハイライト）──
+            active_idx = st.session_state.get("sg_active_cand", 0)
+            if active_idx >= len(candidates):
+                active_idx = 0
+
+            for i, cand in enumerate(candidates):
+                is_active = (i == active_idx)
+                bg     = "#EFF6FF" if is_active else "#FAFAFA"
+                border = "2px solid #3B82F6" if is_active else "1px solid #E5E7EB"
+                label_color = "#1D4ED8" if is_active else "#9CA3AF"
+                badge = (
+                    f'<span style="background:#3B82F6;color:white;font-size:0.7rem;'
+                    f'font-weight:700;padding:2px 8px;border-radius:99px;margin-left:6px;">選択中</span>'
+                    if is_active else ""
+                )
+                st.markdown(
+                    f'<div style="background:{bg};border:{border};border-radius:10px;'
+                    f'padding:12px 16px;margin-bottom:6px;">'
+                    f'<div style="font-size:0.72rem;font-weight:700;color:{label_color};margin-bottom:6px;">'
+                    f'候補 {i+1}{badge}</div>'
+                    f'<div style="font-size:0.87rem;color:#1F2937;line-height:1.7;white-space:pre-wrap;">'
+                    f'{cand}</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+            # ── ③ ラジオ選択 ＋ 差し替えボタン（最下部にまとめる）──
+            st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
             col_radio, col_apply_btn = st.columns([3, 1])
             with col_radio:
-                active_idx = st.radio(
-                    "候補を選択",
+                new_active = st.radio(
+                    "どの候補に差し替えますか？",
                     list(range(len(candidates))),
                     format_func=lambda i: f"候補 {i+1}",
                     horizontal=True,
+                    index=active_idx,
                     key="sg_active_cand",
-                    label_visibility="collapsed",
                 )
             with col_apply_btn:
                 apply_clicked = st.button(
@@ -1828,72 +1858,57 @@ padding:12px 18px;margin-bottom:14px;border:1px solid #A7F3D0;">
                     use_container_width=True,
                 )
 
-            # ── ② 選択中の候補テキスト（コンパクト表示）──
-            active_cand = candidates[active_idx]
-            st.markdown(
-                f'<div style="background:#EFF6FF;border:2px solid #3B82F6;border-radius:10px;'
-                f'padding:12px 18px;margin:8px 0 14px;">'
-                f'<div style="font-size:0.72rem;font-weight:700;color:#1D4ED8;margin-bottom:6px;">'
-                f'候補 {active_idx+1} のテキスト</div>'
-                f'<div style="font-size:0.88rem;color:#1F2937;line-height:1.7;white-space:pre-wrap;">'
-                f'{active_cand}</div></div>',
-                unsafe_allow_html=True,
-            )
+            active_cand = candidates[new_active]
 
-            # ── ③ 前後コンテキストプレビュー（1回のみ・アクティブ候補で更新）──
+            # ── ④ 前後コンテキストプレビュー（折りたたみ・必要な時だけ）──
             if blocks_range:
-                with st.expander("📖 前後の文脈でプレビューする", expanded=False):
-                    st.caption("青 = 差し替え対象（選択中の候補） ／ オレンジ = 選択範囲内・変更なし ／ 灰 = 範囲外・変更なし")
-                    _ROLE_STYLE = {
-                        "before":  ("▲ 前（変更なし）",          "#F3F4F6", "#D1D5DB", "#6B7280",  "#9CA3AF"),
-                        "after":   ("▼ 後（変更なし）",          "#F3F4F6", "#D1D5DB", "#6B7280",  "#9CA3AF"),
-                        "between": ("↕ 変更なし（選択範囲内）",   "#FFFBEB", "#F59E0B", "#78350F",  "#B45309"),
-                        "selected":("✏️ 差し替え（候補テキスト）","#EFF6FF", "#3B82F6", "#1F2937",  "#1D4ED8"),
+                with st.expander("📖 前後の文脈でプレビューする"):
+                    st.caption("青 = 差し替え対象 ／ オレンジ = 選択範囲内で変更なし ／ 灰 = 範囲外")
+                    _RS = {
+                        "before":  ("▲ 前（変更なし）",        "#F3F4F6","#D1D5DB","#6B7280","#9CA3AF"),
+                        "after":   ("▼ 後（変更なし）",        "#F3F4F6","#D1D5DB","#6B7280","#9CA3AF"),
+                        "between": ("↕ 変更なし（範囲内）",    "#FFFBEB","#F59E0B","#78350F","#B45309"),
+                        "selected":("✏️ 差し替え対象",         "#EFF6FF","#3B82F6","#1F2937","#1D4ED8"),
                     }
-                    preview_html = ""
-                    sel_injected = False
+                    ph = ""
+                    injected = False
                     for blk in blocks_range:
-                        role = blk["role"]
-                        lbl, bg, bc, tc, lc = _ROLE_STYLE.get(role, ("", "#F9FAFB", "#E5E7EB", "#374151", "#6B7280"))
-                        if role == "selected":
-                            if not sel_injected:
-                                preview_html += (
-                                    f'<div style="background:{bg};border:2px solid {bc};border-radius:8px;'
-                                    f'padding:11px 15px;font-size:0.87rem;color:{tc};line-height:1.7;'
-                                    f'white-space:pre-wrap;margin:4px 0;">'
-                                    f'<span style="font-size:0.7rem;font-weight:700;color:{lc};">{lbl}</span>'
-                                    f'<br><br>{active_cand}</div>'
-                                )
-                                sel_injected = True
+                        r = blk["role"]
+                        lbl,bg,bc,tc,lc = _RS.get(r,("","#F9FAFB","#E5E7EB","#374151","#6B7280"))
+                        if r == "selected":
+                            if not injected:
+                                ph += (f'<div style="background:{bg};border:2px solid {bc};border-radius:8px;'
+                                       f'padding:11px 15px;font-size:0.87rem;color:{tc};line-height:1.7;'
+                                       f'white-space:pre-wrap;margin:4px 0;">'
+                                       f'<span style="font-size:0.7rem;font-weight:700;color:{lc};">{lbl}</span>'
+                                       f'<br><br>{active_cand}</div>')
+                                injected = True
                         else:
-                            preview_html += (
-                                f'<div style="background:{bg};border-left:3px solid {bc};'
-                                f'padding:9px 13px;font-size:0.81rem;color:{tc};line-height:1.55;'
-                                f'white-space:pre-wrap;border-radius:0 6px 6px 0;margin:3px 0;">'
-                                f'<span style="font-size:0.7rem;font-weight:600;color:{lc};">{lbl}</span>'
-                                f'<br>{blk["text"]}</div>'
-                            )
-                    st.markdown(preview_html, unsafe_allow_html=True)
+                            ph += (f'<div style="background:{bg};border-left:3px solid {bc};'
+                                   f'padding:9px 13px;font-size:0.81rem;color:{tc};line-height:1.55;'
+                                   f'white-space:pre-wrap;border-radius:0 6px 6px 0;margin:3px 0;">'
+                                   f'<span style="font-size:0.7rem;font-weight:600;color:{lc};">{lbl}</span>'
+                                   f'<br>{blk["text"]}</div>')
+                    st.markdown(ph, unsafe_allow_html=True)
 
-            # ── ④ 差し替え処理 ──
+            # ── ⑤ 差し替え処理 ──
             if apply_clicked:
                 import re as _re2
                 current = st.session_state.sg_edited_draft
                 if original_blocks_bu:
                     new_script = current
-                    first_block = original_blocks_bu[0]
-                    if first_block in new_script:
-                        new_script = new_script.replace(first_block, active_cand, 1)
-                    for extra_block in original_blocks_bu[1:]:
-                        if extra_block in new_script:
-                            new_script = new_script.replace(extra_block, "", 1)
+                    if original_blocks_bu[0] in new_script:
+                        new_script = new_script.replace(original_blocks_bu[0], active_cand, 1)
+                    for extra in original_blocks_bu[1:]:
+                        if extra in new_script:
+                            new_script = new_script.replace(extra, "", 1)
                     new_script = _re2.sub(r'\n{3,}', '\n\n', new_script).strip()
                     st.session_state.sg_edited_draft = new_script
                     st.session_state["sg_brushup_candidates"] = []
                     st.session_state["sg_brushup_selected_blocks"] = []
                     st.session_state["sg_brushup_checked"] = []
                     st.session_state["sg_brushup_context"] = {}
-                    st.success("✅ 差し替えました！台本が更新されました。")
+                    st.success("✅ 差し替えました！")
                     st.rerun()
                 else:
                     st.warning("元のブロックが見つかりませんでした。台本を直接編集してください。")
