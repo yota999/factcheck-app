@@ -1627,51 +1627,59 @@ border:1px solid #C7D2FE;box-shadow:0 2px 12px rgba(79,70,229,.06);">
 border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD;">
 <h4 style="margin:0 0 4px;color:#0C4A6E;font-size:1.05rem;">✏️ 部分ブラッシュアップ</h4>
 <p style="margin:0;color:#0369A1;font-size:0.84rem;line-height:1.6;">
-改善したいブロックの「選択」ボタンを押すと下のパネルに自動反映されます。方向性を選んで候補を生成してください。
+改善したいブロックにチェックを入れてください（複数選択可）。方向性を選んで候補を生成し、気に入った候補で差し替えられます。
 </p>
 </div>
 """, unsafe_allow_html=True)
 
-        # ── ブロック一覧（段落ごとに選択ボタン表示）──
+        # ── ブロック一覧（チェックボックスで複数選択）──
         current_script_for_bu = st.session_state.sg_edited_draft
         blocks = [b.strip() for b in current_script_for_bu.split("\n\n") if b.strip()]
-        # 段落分割で少なすぎる場合は改行で再分割
         if len(blocks) <= 2:
             blocks = [b.strip() for b in current_script_for_bu.split("\n") if b.strip()]
 
-        selected_block = st.session_state.get("sg_brushup_original", "")
+        # セッション: 選択済みブロックindexリスト
+        if "sg_brushup_checked" not in st.session_state:
+            st.session_state["sg_brushup_checked"] = []
 
-        st.markdown("**① 改善したいブロックを選択**")
+        st.markdown("**① 改善したいブロックを選択（複数可）**")
+        new_checked = []
         for bi, block in enumerate(blocks):
-            is_selected = (block == selected_block)
-            bg = "#EFF6FF" if is_selected else "#FAFAFA"
-            border = "2px solid #3B82F6" if is_selected else "1px solid #E5E7EB"
-            label = "✅ 選択中" if is_selected else "選択"
-            col_blk, col_btn = st.columns([10, 1])
+            is_checked = bi in st.session_state["sg_brushup_checked"]
+            col_chk, col_blk = st.columns([1, 15])
+            with col_chk:
+                checked = st.checkbox("", value=is_checked, key=f"sg_blk_chk_{bi}", label_visibility="collapsed")
             with col_blk:
-                preview = block[:120] + "…" if len(block) > 120 else block
+                bg = "#EFF6FF" if checked else "#FAFAFA"
+                border = "2px solid #3B82F6" if checked else "1px solid #E5E7EB"
+                # テキスト省略なし・全文表示
                 st.markdown(
                     f'<div style="background:{bg};border:{border};border-radius:8px;'
-                    f'padding:10px 14px;font-size:0.85rem;line-height:1.6;color:#374151;">'
-                    f'{preview}</div>',
+                    f'padding:10px 14px;font-size:0.85rem;line-height:1.6;color:#374151;'
+                    f'white-space:pre-wrap;word-break:break-word;">'
+                    f'{block}</div>',
                     unsafe_allow_html=True,
                 )
-            with col_btn:
-                if st.button(label, key=f"sg_blk_sel_{bi}", use_container_width=True):
-                    st.session_state["sg_brushup_original"] = block
-                    st.session_state["sg_brushup_candidates"] = []
-                    st.rerun()
+            if checked:
+                new_checked.append(bi)
+
+        st.session_state["sg_brushup_checked"] = new_checked
+
+        # 選択中ブロックを取得
+        selected_blocks = [blocks[i] for i in new_checked if i < len(blocks)]
 
         st.markdown("<br>", unsafe_allow_html=True)
 
         # ── 選択中ブロック表示 + 方向性 ──
-        selected_block = st.session_state.get("sg_brushup_original", "")
-        if selected_block:
+        if selected_blocks:
+            combined_preview = "\n\n".join(selected_blocks)
             st.markdown(
                 f'<div style="background:#EFF6FF;border:2px solid #3B82F6;border-radius:10px;'
                 f'padding:12px 16px;margin-bottom:12px;">'
-                f'<div style="font-size:0.75rem;color:#1D4ED8;font-weight:600;margin-bottom:6px;">選択中のブロック</div>'
-                f'<div style="font-size:0.88rem;color:#1E3A5F;line-height:1.7;">{selected_block}</div>'
+                f'<div style="font-size:0.75rem;color:#1D4ED8;font-weight:600;margin-bottom:6px;">'
+                f'選択中のブロック（{len(selected_blocks)}件）</div>'
+                f'<div style="font-size:0.88rem;color:#1E3A5F;line-height:1.7;white-space:pre-wrap;">'
+                f'{combined_preview}</div>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
@@ -1686,6 +1694,9 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                     "より自然な話し言葉に",
                     "専門性・説得力を高める",
                     "冒頭フックをより刺さる表現に",
+                    "初心者・一般の人にも分かりやすく",
+                    "ダイエット初心者でも分かる言い回しに",
+                    "専門用語をなくして平易な表現に",
                     "カスタム指示を入力...",
                 ]
                 preset = st.selectbox("② 改善の方向性", BRUSHUP_PRESETS, key="sg_brushup_preset")
@@ -1706,21 +1717,22 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                     try:
                         from script_crew import generate_brushup_candidates
                         candidates = generate_brushup_candidates(
-                            target_text=selected_block,
+                            target_text=combined_preview,
                             instruction=brushup_instruction,
                             n_candidates=n_cands,
                             script_type=script_type,
                             model=model_id,
                         )
                         st.session_state["sg_brushup_candidates"] = candidates
+                        st.session_state["sg_brushup_selected_blocks"] = selected_blocks
                     except Exception as e:
                         st.error(f"生成エラー: {e}")
 
         # ── 候補表示 ──
         candidates = st.session_state.get("sg_brushup_candidates", [])
-        original_bu = st.session_state.get("sg_brushup_original", "")
+        original_blocks_bu = st.session_state.get("sg_brushup_selected_blocks", [])
         if candidates:
-            st.markdown("**生成された候補：**")
+            st.markdown("**生成された候補（差し替えたい候補の「差し替える」を押してください）：**")
             for i, cand in enumerate(candidates):
                 col_cand, col_apply = st.columns([5, 1])
                 with col_cand:
@@ -1728,27 +1740,39 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                         f'<div style="background:white;border:1px solid #BFDBFE;border-radius:10px;'
                         f'padding:12px 16px;margin-bottom:4px;">'
                         f'<div style="font-size:0.75rem;color:#1D4ED8;font-weight:600;margin-bottom:6px;">候補 {i+1}</div>'
-                        f'<div style="font-size:0.88rem;color:#1F2937;line-height:1.7;">{cand}</div>'
+                        f'<div style="font-size:0.88rem;color:#1F2937;line-height:1.7;white-space:pre-wrap;">{cand}</div>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
                 with col_apply:
                     st.markdown("<br><br>", unsafe_allow_html=True)
                     if st.button("✅ 差し替える", key=f"sg_apply_cand_{i}", use_container_width=True):
+                        import re as _re2
                         current = st.session_state.sg_edited_draft
-                        if original_bu and original_bu in current:
-                            new_script = current.replace(original_bu, cand, 1)
+                        if original_blocks_bu:
+                            new_script = current
+                            # 最初のブロックを候補に置換、残りは削除
+                            first_block = original_blocks_bu[0]
+                            if first_block in new_script:
+                                new_script = new_script.replace(first_block, cand, 1)
+                            for extra_block in original_blocks_bu[1:]:
+                                if extra_block in new_script:
+                                    new_script = new_script.replace(extra_block, "", 1)
+                            # 連続する空行を整理
+                            new_script = _re2.sub(r'\n{3,}', '\n\n', new_script).strip()
                             st.session_state.sg_edited_draft = new_script
                             st.session_state["sg_brushup_candidates"] = []
-                            st.session_state["sg_brushup_original"] = ""
+                            st.session_state["sg_brushup_selected_blocks"] = []
+                            st.session_state["sg_brushup_checked"] = []
                             st.success("差し替えました！")
                             st.rerun()
                         else:
-                            st.warning("ブロックが台本中に見つかりませんでした。台本を直接編集してください。")
+                            st.warning("元のブロックが見つかりませんでした。台本を直接編集してください。")
 
             if st.button("✕ クリア", key="sg_brushup_clear"):
                 st.session_state["sg_brushup_candidates"] = []
-                st.session_state["sg_brushup_original"] = ""
+                st.session_state["sg_brushup_selected_blocks"] = []
+                st.session_state["sg_brushup_checked"] = []
                 st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
