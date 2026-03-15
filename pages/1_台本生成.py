@@ -597,6 +597,10 @@ def _init():
         "sg_variant_error": "",
         # ファクトチェック
         "sg_fc_results": [],
+        # 部分ブラッシュアップ
+        "sg_brushup_candidates": [],
+        "sg_brushup_original": "",
+        "sg_brushup_generating": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -1610,6 +1614,113 @@ border:1px solid #C7D2FE;box-shadow:0 2px 12px rgba(79,70,229,.06);">
                 st.caption(f"📝 編集後: {char_after}文字（{char_after - target_max}文字オーバー）")
             else:
                 st.caption(f"📝 編集後: {char_after}文字 ✓")
+
+        # テキストエリアの変更を即時反映
+        if edited_final != final_script:
+            st.session_state.sg_edited_draft = edited_final
+
+        st.markdown("---")
+
+        # ── 部分ブラッシュアップ ────────────────────────────────────────
+        st.markdown("""
+<div style="background:linear-gradient(135deg,#F0F9FF 0%,#EFF6FF 100%);
+border-radius:14px;padding:20px 24px;margin-bottom:18px;border:1px solid #BAE6FD;">
+<h4 style="margin:0 0 6px;color:#0C4A6E;font-size:1.05rem;">✏️ 部分ブラッシュアップ</h4>
+<p style="margin:0;color:#0369A1;font-size:0.85rem;line-height:1.6;">
+改善したい部分をコピーして貼り付け、方向性を指定するとAIが複数の候補を生成します。
+気に入った候補を選ぶと台本に自動反映されます。
+</p>
+</div>
+""", unsafe_allow_html=True)
+
+        col_bu1, col_bu2 = st.columns([3, 2])
+        with col_bu1:
+            brushup_target = st.text_area(
+                "① 改善したいテキストを貼り付け",
+                placeholder="台本から改善したい部分（文章・段落）をコピーして貼り付けてください",
+                height=130,
+                key="sg_brushup_input",
+            )
+        with col_bu2:
+            BRUSHUP_PRESETS = [
+                "別のニュアンスで書き直す",
+                "もっと感情的・共感的に",
+                "より簡潔にまとめる",
+                "インパクトを強くする",
+                "より自然な話し言葉に",
+                "専門性・説得力を高める",
+                "冒頭フックをより刺さる表現に",
+                "カスタム指示を入力...",
+            ]
+            preset = st.selectbox("② 改善の方向性", BRUSHUP_PRESETS, key="sg_brushup_preset")
+            if preset == "カスタム指示を入力...":
+                custom_inst = st.text_input(
+                    "具体的な指示",
+                    placeholder="例：もっと驚きのある書き出しにして",
+                    key="sg_brushup_custom",
+                )
+                brushup_instruction = custom_inst if custom_inst else "より良い表現に書き直す"
+            else:
+                brushup_instruction = preset
+
+            n_cands = st.radio("③ 候補数", [2, 3, 4], index=1, horizontal=True, key="sg_brushup_n")
+
+        if st.button("🪄 候補を生成する", type="primary", use_container_width=True, key="sg_brushup_btn"):
+            if not brushup_target.strip():
+                st.warning("改善したいテキストを貼り付けてください")
+            else:
+                with st.spinner("AIが候補を生成中..."):
+                    try:
+                        from script_crew import generate_brushup_candidates
+                        candidates = generate_brushup_candidates(
+                            target_text=brushup_target,
+                            instruction=brushup_instruction,
+                            n_candidates=n_cands,
+                            script_type=script_type,
+                            model=model_id,
+                        )
+                        st.session_state["sg_brushup_candidates"] = candidates
+                        st.session_state["sg_brushup_original"] = brushup_target
+                    except Exception as e:
+                        st.error(f"生成エラー: {e}")
+
+        # 候補表示
+        candidates = st.session_state.get("sg_brushup_candidates", [])
+        original_bu = st.session_state.get("sg_brushup_original", "")
+        if candidates:
+            st.markdown("**生成された候補：**")
+            for i, cand in enumerate(candidates):
+                with st.container():
+                    st.markdown(
+                        f'<div style="background:white;border:1px solid #E0F2FE;border-radius:10px;'
+                        f'padding:14px 16px;margin-bottom:10px;">'
+                        f'<div style="font-size:0.78rem;color:#0284C7;font-weight:600;margin-bottom:8px;">'
+                        f'候補 {i+1}</div></div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.text_area(
+                        f"候補{i+1}",
+                        value=cand,
+                        height=100,
+                        key=f"sg_cand_display_{i}",
+                        label_visibility="collapsed",
+                    )
+                    if st.button(f"✅ この候補に差し替える", key=f"sg_apply_cand_{i}", use_container_width=True):
+                        current = st.session_state.sg_edited_draft
+                        if original_bu and original_bu in current:
+                            new_script = current.replace(original_bu, cand, 1)
+                            st.session_state.sg_edited_draft = new_script
+                            st.session_state["sg_brushup_candidates"] = []
+                            st.session_state["sg_brushup_original"] = ""
+                            st.success("差し替えました！台本を確認してください。")
+                            st.rerun()
+                        else:
+                            st.warning("元のテキストが台本中に見つかりませんでした。台本を直接編集してください。")
+
+            if st.button("✕ 候補をクリア", key="sg_brushup_clear"):
+                st.session_state["sg_brushup_candidates"] = []
+                st.session_state["sg_brushup_original"] = ""
+                st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 新しい台本を生成する", use_container_width=True):

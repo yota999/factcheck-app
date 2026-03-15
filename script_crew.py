@@ -624,6 +624,56 @@ def factcheck_parallel(script: str) -> list:
     return results
 
 
+# ── 部分ブラッシュアップ ──────────────────────────────────────────────
+
+def generate_brushup_candidates(
+    target_text: str,
+    instruction: str,
+    n_candidates: int,
+    script_type: str,
+    model: str,
+) -> list:
+    """台本の一部を指定の方向性で書き直した候補をn個返す"""
+    type_name = "YouTube台本（長尺・4500〜5000文字）" if script_type == "youtube" else "リール台本（短尺・700〜800文字）"
+    prompt = f"""あなたは{type_name}のプロのライターです。
+以下の【元のテキスト】を、【改善の指示】に沿って書き直してください。
+
+【元のテキスト】
+{target_text}
+
+【改善の指示】
+{instruction}
+
+【ルール】
+- {n_candidates}パターンの候補を生成する
+- 各候補は「---候補N---」という区切り行で分ける（Nは番号）
+- 元のテキストと同程度の長さを目安にする（大幅に長くしない）
+- 台本として自然な話し言葉・語り口を維持する
+- 区切り行と候補テキスト以外の説明・前置きは一切不要
+
+出力例:
+---候補1---
+（書き直したテキスト）
+---候補2---
+（書き直したテキスト）"""
+
+    text = _call_llm(prompt, model=model, temperature=0.85, max_tokens=3000)
+
+    candidates = []
+    import re
+    parts = re.split(r"---候補\d+---", text)
+    for p in parts:
+        p = p.strip()
+        if p and len(p) > 10:
+            candidates.append(p)
+
+    # パース失敗時は全文を1候補として返す
+    if not candidates:
+        candidates = [text.strip()]
+
+    return candidates[:n_candidates]
+
+
 # ── 台本の評価・分析 ──────────────────────────────────────────────────
 
 def analyze_good_elements(script: str, script_type: str, model: str) -> list:
