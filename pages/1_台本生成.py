@@ -601,12 +601,19 @@ def _init():
         "sg_brushup_candidates": [],
         "sg_brushup_original": "",
         "sg_brushup_generating": False,
+        # 処理完了通知トースト
+        "sg_process_done_toast": "",
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
 _init()
+
+# ── 処理完了トースト通知（各処理が終わった直後のリランで1回だけ表示）──
+if st.session_state.get("sg_process_done_toast"):
+    st.toast(f"✅ 処理が終了しました — {st.session_state['sg_process_done_toast']}", icon="✅")
+    st.session_state["sg_process_done_toast"] = ""
 
 
 def reset_all():
@@ -755,14 +762,14 @@ if step == 0:
         st.session_state.sg_current_angle = (angle_key, angle_name)
         st.session_state.sg_current_ai = (model_id, model_name)
 
-        with st.spinner("Serper + YouTube Data API でトレンドを収集中..."):
+        with st.spinner("⏳ まだ処理中です... トレンド情報を収集しています"):
             try:
                 from script_crew import fetch_all_trends
                 trends, video_trends, youtube_trends = fetch_all_trends()
             except Exception:
                 trends, video_trends, youtube_trends = [], [], []
 
-        with st.spinner(f"{model_name} でテーマを20個生成中...（アングル：{angle_name}）"):
+        with st.spinner("⏳ まだ処理中です... テーマを20個生成しています"):
             try:
                 from script_crew import generate_themes
                 themes = generate_themes(
@@ -777,6 +784,7 @@ if step == 0:
                 )
                 st.session_state.sg_themes = themes
                 st.session_state.sg_step = 1
+                st.session_state["sg_process_done_toast"] = "テーマ生成完了"
                 st.rerun()
             except Exception as e:
                 import traceback
@@ -887,7 +895,7 @@ elif step == 1:
                 st.session_state.sg_current_angle = (angle_key, angle_name)
                 st.session_state.sg_current_ai = (model_id, model_name)
 
-                with st.spinner(f"{model_name} で再生成中..."):
+                with st.spinner("⏳ まだ処理中です... テーマを再生成しています"):
                     try:
                         from script_crew import fetch_all_trends, generate_themes
                         trends, video_trends, youtube_trends = fetch_all_trends()
@@ -900,6 +908,7 @@ elif step == 1:
                         )
                         st.session_state.sg_themes = themes
                         st.session_state.sg_selected_themes = []
+                        st.session_state["sg_process_done_toast"] = "テーマ再生成完了"
                         st.rerun()
                     except Exception as e:
                         st.error(f"エラー: {e}")
@@ -917,7 +926,7 @@ elif step == 1:
                 except Exception:
                     good_elements, rejected_ideas = [], []
 
-                with st.spinner("コンテンツアイデアを20個生成中..."):
+                with st.spinner("⏳ まだ処理中です... アイデアを20個生成しています"):
                     try:
                         from script_crew import generate_ideas
                         ideas = generate_ideas(
@@ -929,6 +938,7 @@ elif step == 1:
                         )
                         st.session_state.sg_ideas = ideas
                         st.session_state.sg_step = 2
+                        st.session_state["sg_process_done_toast"] = "アイデア生成完了"
                         st.rerun()
                     except Exception as e:
                         import traceback
@@ -1078,7 +1088,7 @@ elif step == 2:
                     rejected_ideas = get_rejected_ideas(st.session_state.sg_script_type)
                 except Exception:
                     good_elements, rejected_ideas = [], []
-                with st.spinner("アイデアを再生成中..."):
+                with st.spinner("⏳ まだ処理中です... アイデアを再生成しています"):
                     try:
                         from script_crew import generate_ideas
                         new_ideas = generate_ideas(
@@ -1089,6 +1099,7 @@ elif step == 2:
                         )
                         st.session_state.sg_ideas = new_ideas
                         st.session_state.sg_selected_ideas = []
+                        st.session_state["sg_process_done_toast"] = "アイデア再生成完了"
                         st.rerun()
                     except Exception as e:
                         st.error(f"エラー: {e}")
@@ -1110,7 +1121,7 @@ elif step == 2:
                 except Exception:
                     good_elements, bad_patterns, ref_scripts = [], [], []
 
-                with st.spinner(f"台本を生成中... ({char_range})"):
+                with st.spinner(f"⏳ まだ処理中です... 台本を生成しています ({char_range})"):
                     try:
                         from script_crew import generate_draft
                         draft = generate_draft(
@@ -1127,6 +1138,7 @@ elif step == 2:
                         st.session_state["sg_draft_variants"] = []
                         st.session_state["sg_selected_variant_idx"] = 0
                         st.session_state.sg_step = 3
+                        st.session_state["sg_process_done_toast"] = "台本生成完了"
                         st.rerun()
                     except Exception as e:
                         import traceback
@@ -1187,7 +1199,7 @@ elif step == 3:
                     st.rerun()
         else:
             # 自動生成を実行
-            with st.spinner("10種の切り口で台本を並列生成中... しばらくお待ちください（1〜2分）"):
+            with st.spinner("⏳ まだ処理中です... 10種の切り口で台本を並列生成しています（1〜2分）"):
                 try:
                     from memory_manager import (get_good_elements, get_bad_patterns,
                                                 get_reference_scripts, get_edit_improvements)
@@ -1216,6 +1228,7 @@ elif step == 3:
                     st.session_state.sg_edited_draft = result[0]["draft"]
                     # テキストエリアのキャッシュをクリア
                     st.session_state.pop("sg_direct_edit_v2", None)
+                    st.session_state["sg_process_done_toast"] = "10パターンの台本生成完了"
                     st.rerun()
                 except Exception as e:
                     import traceback
@@ -1758,7 +1771,7 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                 n_cands = st.radio("③ 候補数", [2, 3, 4], index=1, horizontal=False, key="sg_brushup_n")
 
             if st.button("🪄 候補を生成する", type="primary", use_container_width=True, key="sg_brushup_btn"):
-                with st.spinner(f"AIが{len(selected_blocks)}ブロック分の候補を並列生成中..."):
+                with st.spinner(f"⏳ まだ処理中です... {len(selected_blocks)}ブロック分の候補を生成しています"):
                     try:
                         from script_crew import generate_brushup_candidates
                         import concurrent.futures as _cf
@@ -1778,6 +1791,7 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
 
                         st.session_state["sg_brushup_per_block"] = per_block
                         st.session_state["sg_brushup_candidates"] = []   # 旧キーをクリア
+                        st.session_state["sg_process_done_toast"] = "ブラッシュアップ候補の生成完了"
                     except Exception as e:
                         st.error(f"生成エラー: {e}")
 
