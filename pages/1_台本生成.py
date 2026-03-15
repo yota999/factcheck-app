@@ -1817,14 +1817,15 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                             unsafe_allow_html=True,
                         )
                     else:
-                        # 変更前ブロック → 通常テキストと同じ白背景で表示
+                        # 変更前ブロック → オレンジ背景で表示
                         st.markdown(
-                            f'<div style="padding:8px 14px;margin:2px 0;font-size:0.86rem;'
-                            f'color:#374151;line-height:1.7;white-space:pre-wrap;">{para_text}</div>',
+                            f'<div style="background:#FFF7ED;border-left:3px solid #FB923C;'
+                            f'border-radius:0 8px 8px 0;padding:10px 14px;margin:4px 0 2px;'
+                            f'font-size:0.86rem;color:#374151;line-height:1.7;white-space:pre-wrap;">{para_text}</div>',
                             unsafe_allow_html=True,
                         )
 
-                        # 候補：ラジオボタンを左前に配置
+                        # 候補：小さいチェックボックスを左前に配置
                         active_key = f"sg_active_cand_{bi}"
                         active_i = st.session_state.get(active_key, 0)
                         if active_i >= len(block_cands):
@@ -1834,14 +1835,13 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                             is_active = (ci == active_i)
                             bg     = "#EFF6FF" if is_active else "#F9FAFB"
                             border = "2px solid #3B82F6" if is_active else "1px solid #E5E7EB"
-                            col_rb, col_txt = st.columns([1, 18])
-                            with col_rb:
-                                if st.button(
-                                    "🔵" if is_active else "⚪",
-                                    key=f"sg_sel_{bi}_{ci}",
-                                    use_container_width=True,
-                                    help=f"候補{ci+1}を選択",
-                                ):
+                            col_chk, col_txt = st.columns([0.3, 9])
+                            with col_chk:
+                                checked = st.checkbox(
+                                    "", value=is_active,
+                                    key=f"sg_chk_{bi}_{ci}",
+                                )
+                                if checked and not is_active:
                                     st.session_state[active_key] = ci
                                     st.rerun()
                             with col_txt:
