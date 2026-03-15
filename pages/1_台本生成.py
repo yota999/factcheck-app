@@ -1810,25 +1810,21 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                     applied     = block_info["applied"]
 
                     if applied:
-                        # 差し替え済みは緑で表示
+                        # 差し替え済みは通常テキストとして表示
                         st.markdown(
-                            f'<div style="background:#F0FDF4;border-left:4px solid #22C55E;'
-                            f'border-radius:0 8px 8px 0;padding:10px 14px;margin:4px 0;">'
-                            f'<div style="font-size:0.68rem;font-weight:700;color:#16A34A;margin-bottom:3px;">✅ 差し替え済み</div>'
-                            f'<div style="font-size:0.86rem;color:#15803D;line-height:1.65;white-space:pre-wrap;">{para_text}</div></div>',
+                            f'<div style="padding:8px 14px;margin:2px 0;font-size:0.86rem;'
+                            f'color:#374151;line-height:1.7;white-space:pre-wrap;">{para_text}</div>',
                             unsafe_allow_html=True,
                         )
                     else:
-                        # 変更前ブロック（オレンジ枠）
+                        # 変更前ブロック → 通常テキストと同じ白背景で表示
                         st.markdown(
-                            f'<div style="background:#FFFBEB;border-left:4px solid #F59E0B;'
-                            f'border-radius:0 8px 8px 0;padding:10px 14px;margin:4px 0;">'
-                            f'<div style="font-size:0.68rem;font-weight:700;color:#B45309;margin-bottom:3px;">🔄 変更前（ブロック {bi+1}）</div>'
-                            f'<div style="font-size:0.86rem;color:#78350F;line-height:1.65;white-space:pre-wrap;">{para_text}</div></div>',
+                            f'<div style="padding:8px 14px;margin:2px 0;font-size:0.86rem;'
+                            f'color:#374151;line-height:1.7;white-space:pre-wrap;">{para_text}</div>',
                             unsafe_allow_html=True,
                         )
 
-                        # 候補を縦に並べる
+                        # 候補：ラジオボタンを左前に配置
                         active_key = f"sg_active_cand_{bi}"
                         active_i = st.session_state.get(active_key, 0)
                         if active_i >= len(block_cands):
@@ -1838,30 +1834,26 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                             is_active = (ci == active_i)
                             bg     = "#EFF6FF" if is_active else "#F9FAFB"
                             border = "2px solid #3B82F6" if is_active else "1px solid #E5E7EB"
-                            lc     = "#1D4ED8" if is_active else "#9CA3AF"
-                            badge  = (' <span style="background:#3B82F6;color:white;font-size:0.65rem;'
-                                      'padding:1px 6px;border-radius:99px;">選択中</span>' if is_active else "")
-                            st.markdown(
-                                f'<div style="background:{bg};border:{border};border-radius:8px;'
-                                f'padding:10px 14px;margin:3px 0 3px 20px;">'
-                                f'<div style="font-size:0.68rem;font-weight:700;color:{lc};margin-bottom:4px;">'
-                                f'候補 {ci+1}{badge}</div>'
-                                f'<div style="font-size:0.86rem;color:#1F2937;line-height:1.65;white-space:pre-wrap;">{cand}</div></div>',
-                                unsafe_allow_html=True,
-                            )
+                            col_rb, col_txt = st.columns([1, 18])
+                            with col_rb:
+                                if st.button(
+                                    "🔵" if is_active else "⚪",
+                                    key=f"sg_sel_{bi}_{ci}",
+                                    use_container_width=True,
+                                    help=f"候補{ci+1}を選択",
+                                ):
+                                    st.session_state[active_key] = ci
+                                    st.rerun()
+                            with col_txt:
+                                st.markdown(
+                                    f'<div style="background:{bg};border:{border};border-radius:8px;'
+                                    f'padding:10px 14px;margin:2px 0;">'
+                                    f'<div style="font-size:0.86rem;color:#1F2937;line-height:1.7;white-space:pre-wrap;">{cand}</div></div>',
+                                    unsafe_allow_html=True,
+                                )
 
-                        # ラジオ選択
-                        col_r, col_b = st.columns([4, 1])
-                        with col_r:
-                            st.radio(
-                                "候補を選択",
-                                list(range(len(block_cands))),
-                                format_func=lambda ci: f"候補 {ci+1}",
-                                horizontal=True,
-                                index=active_i,
-                                key=active_key,
-                                label_visibility="collapsed",
-                            )
+                        # 差し替えボタン
+                        _, col_b = st.columns([18, 2])
                         with col_b:
                             if st.button("✅ 差し替える", type="primary",
                                          key=f"sg_apply_b{bi}", use_container_width=True):
@@ -1873,7 +1865,6 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
                                     new_script = _re2.sub(r'\n{3,}', '\n\n', new_script).strip()
                                     st.session_state.sg_edited_draft = new_script
                                     st.session_state["sg_brushup_per_block"][bi]["applied"] = True
-                                    # ルックアップのoriginalも更新
                                     st.session_state["sg_brushup_per_block"][bi]["original"] = chosen_text
                                     st.rerun()
                                 else:
