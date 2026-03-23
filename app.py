@@ -321,7 +321,7 @@ if st.session_state.fc_done and st.session_state.fc_results:
                     )
                     components.html(f"""
                     <script>
-                    function doCopy(btnId, text) {{
+                    function doCopy(text) {{
                         var ta = document.createElement('textarea');
                         ta.value = text;
                         ta.style.position = 'fixed';
@@ -331,17 +331,19 @@ if st.session_state.fc_done and st.session_state.fc_results:
                         ta.select();
                         try {{ document.execCommand('copy'); }} catch(e) {{}}
                         document.body.removeChild(ta);
-                        var b = document.getElementById(btnId);
-                        b.innerText = '✅ コピーしました！';
-                        b.style.background = '#059669';
-                        setTimeout(function(){{ b.innerText = '📋 コピー'; b.style.background = '#1D4ED8'; }}, 2000);
+                        var msg = document.getElementById('copymsg');
+                        msg.style.display = 'block';
+                        setTimeout(function(){{ msg.style.display = 'none'; }}, 2500);
                     }}
                     </script>
-                    <button id="cpybtn" onclick="doCopy('cpybtn', {json.dumps(corrected_text)})"
+                    <button onclick="doCopy({json.dumps(corrected_text)})"
                     style="background:#1D4ED8;color:white;border:none;border-radius:8px;
                     padding:10px 20px;font-size:0.88rem;cursor:pointer;width:100%;
-                    font-family:sans-serif;font-weight:600;margin-top:6px;">📋 コピー</button>
-                    """, height=52)
+                    font-family:sans-serif;font-weight:600;">📋 コピー</button>
+                    <div id="copymsg" style="display:none;margin-top:8px;padding:8px 12px;
+                    background:#DCFCE7;color:#166534;border-radius:6px;font-size:0.85rem;
+                    font-weight:600;text-align:center;">✅ クリップボードにコピーしました！</div>
+                    """, height=90)
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -408,7 +410,7 @@ if st.session_state.fc_done and st.session_state.fc_results:
                         )
                         components.html(f"""
                         <script>
-                        function doCopy2(btnId, text) {{
+                        function doCopy2(text) {{
                             var ta = document.createElement('textarea');
                             ta.value = text;
                             ta.style.position = 'fixed';
@@ -418,17 +420,19 @@ if st.session_state.fc_done and st.session_state.fc_results:
                             ta.select();
                             try {{ document.execCommand('copy'); }} catch(e) {{}}
                             document.body.removeChild(ta);
-                            var b = document.getElementById(btnId);
-                            b.innerText = '✅ コピーしました！';
-                            b.style.background = '#059669';
-                            setTimeout(function(){{ b.innerText = '📋 コピー'; b.style.background = '#1D4ED8'; }}, 2000);
+                            var msg = document.getElementById('copymsg2');
+                            msg.style.display = 'block';
+                            setTimeout(function(){{ msg.style.display = 'none'; }}, 2500);
                         }}
                         </script>
-                        <button id="cpybtn2" onclick="doCopy2('cpybtn2', {json.dumps(revised_text)})"
+                        <button onclick="doCopy2({json.dumps(revised_text)})"
                         style="background:#1D4ED8;color:white;border:none;border-radius:8px;
                         padding:10px 20px;font-size:0.88rem;cursor:pointer;width:100%;
-                        font-family:sans-serif;font-weight:600;margin-top:6px;">📋 コピー</button>
-                        """, height=52)
+                        font-family:sans-serif;font-weight:600;">📋 コピー</button>
+                        <div id="copymsg2" style="display:none;margin-top:8px;padding:8px 12px;
+                        background:#DCFCE7;color:#166534;border-radius:6px;font-size:0.85rem;
+                        font-weight:600;text-align:center;">✅ クリップボードにコピーしました！</div>
+                        """, height=90)
                         revision_changes = revision.get("changes", "")
                         if revision_changes:
                             st.markdown("**変更箇所**")
