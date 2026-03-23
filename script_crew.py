@@ -199,70 +199,112 @@ def generate_themes(
     youtube_str = "\n".join(youtube_trends) or "（取得できませんでした）"
     keyword_str = f"\n\n【キーワード指定（必ずこのテーマに関連させること）】\n「{keyword}」" if keyword.strip() else ""
 
-    def _gen_for_angle(ak: str, an: str, ad: str) -> list:
+    # 40通り固有の切り口定義（10メイン角度 × 4サブ角度）
+    ANGLE_SLOTS = [
+        # 科学・データ根拠型
+        ("science_a", "最新研究で常識を覆す型", "最新論文・臨床データで従来の定説が間違いだったと示す"),
+        ("science_b", "比較実験・数値検証型", "AとBを比べた実験や統計で差を可視化する"),
+        ("science_c", "体内メカニズム解説型", "ホルモン・代謝・神経の仕組みを「なぜそうなるか」で語る"),
+        ("science_d", "専門家警告・見落とされた真実型", "医師や研究者が指摘する多くの人が知らない落とし穴"),
+        # 感情・共感型
+        ("emotion_a", "あるある共感→反転型", "「頑張ってるのに…」という悔しさに共感し驚きの解決策を提示"),
+        ("emotion_b", "誰も教えてくれなかった本音型", "業界の常識・専門家が隠している不都合な事実を暴く"),
+        ("emotion_c", "自己肯定感・心理ケア型", "見た目より内側から変わる、自分を責めなくていい理由"),
+        ("emotion_d", "将来への恐怖・後悔予防型", "今やらないと10年後こうなる、という未来の自分への警鐘"),
+        # 体験談・ストーリー型
+        ("story_a", "失敗談から学ぶ反面教師型", "〇〇をやり続けた結果どうなったか、実例で語る"),
+        ("story_b", "劇的ビフォーアフター型", "〇〇を変えただけで体が変わった実際のストーリー"),
+        ("story_c", "専門家が驚いたケーススタディ型", "臨床や指導現場で実際に起きた意外な事例"),
+        ("story_d", "継続できた人・できなかった人の分岐点型", "何が成否を分けたか、具体的な行動の違いで語る"),
+        # 常識論破・逆説型
+        ("debate_a", "「実は逆効果」暴露型", "良いと思われていた行動が実は逆効果だったと証明する"),
+        ("debate_b", "やらなくていい理由型", "頑張らなくていい・やめていい、という解放感のあるテーマ"),
+        ("debate_c", "業界の嘘・誤解を正す型", "ダイエット・健康業界が広めてきた誤情報を訂正する"),
+        ("debate_d", "常識の盲点・見落とし型", "みんながやってるのに誰も疑わなかった盲点を指摘"),
+        # 今すぐ行動型
+        ("action_a", "今日から始める具体的ルーティン型", "明日朝から実践できる1つの習慣を提案"),
+        ("action_b", "〇〇をやめるだけ型", "足し算でなく「やめる」だけで変わる、低ハードル提案"),
+        ("action_c", "緊急性・タイムリミット型", "今の年齢・今の状態だから間に合う、を強調"),
+        ("action_d", "小さな変化・積み上げ型", "たった5分・1つだけの小さな行動から始める方法"),
+        # 比較・ランキング型
+        ("ranking_a", "〇〇vs△△徹底比較型", "2つの方法を同じ条件で比べてどちらが効果的か示す"),
+        ("ranking_b", "最強TOP3・ワースト3型", "効果が高い順・悪影響が大きい順にランキングで提示"),
+        ("ranking_c", "年代別・体型別・タイプ別最適解型", "あなたのタイプによって正解が違うことを示す"),
+        ("ranking_d", "コスパ最強・最短最速型", "同じ結果なら少ない努力・時間で達成できる方法を比較"),
+        # ステップ解説型
+        ("howto_a", "順番が大事・やる順番型", "手順を間違えると効果がゼロになる正しいシーケンス"),
+        ("howto_b", "やってはいけないNG手順型", "多くの人が踏む間違いステップとその正しい代替手順"),
+        ("howto_c", "段階別・レベル別攻略型", "初心者→中級者→上級者と段階を分けた最適な進め方"),
+        ("howto_d", "時間帯・タイミング別最適化型", "朝・夜・食前・運動後など「いつやるか」で効果が変わる"),
+        # 心理・行動経済学型
+        ("psychology_a", "損失回避・もったいない心理型", "やめると損する・今の状態を続けると損するを強調"),
+        ("psychology_b", "社会的証明・周りの目型", "同世代の〇割が実践、知らないのは自分だけという刺激"),
+        ("psychology_c", "習慣化・継続できる仕組み型", "意思力に頼らず続けられる環境・仕組みの作り方"),
+        ("psychology_d", "自己イメージ・思い込み書き換え型", "「自分には無理」という信念が体を太らせている理由"),
+        # トレンド・時事型
+        ("trend_a", "SNS・インフルエンサーに広まる最新情報型", "今TikTok・Instagramで話題の方法の真偽を検証"),
+        ("trend_b", "最新研究・2024〜2025年の新発見型", "ここ1〜2年で明らかになった新常識・アップデート情報"),
+        ("trend_c", "季節・時期限定の体変化型", "この季節だから起きる体の変化とその対処法"),
+        ("trend_d", "海外では当たり前・日本で未普及型", "欧米・韓国では常識なのに日本ではまだ知られていない方法"),
+        # 権威・専門家型
+        ("expert_a", "医師・栄養士が勧める意外な方法型", "専門資格を持つプロが実際に患者・クライアントに教える方法"),
+        ("expert_b", "研究機関・大学の発表型", "〇〇大学の研究・論文が証明した事実として権威性を強調"),
+        ("expert_c", "芸能人・著名人が実践して変わった型", "有名人の体験談を切り口に信頼性と親しみやすさを両立"),
+        ("expert_d", "現場の指導者だけが知っている裏ノウハウ型", "一般には出回らないトレーナー・指導者の実践知"),
+    ]
+
+    def _gen_one(slot_key: str, slot_name: str, slot_desc: str) -> str:
         prompt = f"""{persona}
 
-30〜50代女性向けダイエット・健康系の{char_range}テーマを4個提案してください。{keyword_str}
+30〜50代女性向けダイエット・健康系の{char_range}テーマを1個だけ提案してください。{keyword_str}
 
-【このバッチの角度（切り口）】「{an}」
-{ad}
+【この1テーマに使う切り口】「{slot_name}」
+{slot_desc}
 
-【使用済みテーマ（被らないこと・似たものも避ける）】
+【使用済みテーマ（被らないこと）】
 {used_str}
 
 【NGテーマ（絶対に提案しないこと）】
 {rejected_str}
 
-【Google最新トレンド記事（参考）】
+【参考トレンド】
 {trend_str}
 
-【YouTube Data API 人気動画（参考）】
-{youtube_str}
-
 【必須ルール】
-・テーマは全て「{an}」の切り口で展開すること
-・NGテーマと似たものは絶対に出さないこと
-・他のバッチと重複しないよう独自のテーマにすること
+・切り口「{slot_name}」をそのまま活かしたテーマにすること
+・NGテーマと似たものは出さないこと
+・専門用語は使わず直感的な言葉にすること
 
-【出力形式】
-番号付きリストで4個のみ。各テーマは「テーマタイトル｜ポイント1／ポイント2／ポイント3」の形式。
-ポイントは初心者にもわかりやすい日本語で「〇〇が△△になる理由」「□□すると××が変わる」など直感的な表現。
-専門用語は使わないこと。
+【出力形式】（1行のみ・番号不要）
+テーマタイトル｜ポイント1（初心者向けのわかりやすい補足）／ポイント2／ポイント3"""
 
-1. テーマタイトル｜ポイント1／ポイント2／ポイント3
-2. テーマタイトル｜ポイント1／ポイント2／ポイント3
-3. テーマタイトル｜ポイント1／ポイント2／ポイント3
-4. テーマタイトル｜ポイント1／ポイント2／ポイント3"""
-
-        resp = _call_llm(prompt, model=model, temperature=0.88, max_tokens=800)
-        result = []
+        resp = _call_llm(prompt, model=model, temperature=0.9, max_tokens=200)
+        # 番号付きの行があれば番号を除去
         for line in resp.split("\n"):
             line = line.strip()
             if not line:
                 continue
             if len(line) > 2 and line[0].isdigit() and ". " in line:
-                result.append(line.split(". ", 1)[1].strip())
-            elif len(line) > 2 and line[0].isdigit() and "．" in line:
-                result.append(line.split("．", 1)[1].strip())
-        return result[:4]
+                line = line.split(". ", 1)[1].strip()
+            if "｜" in line or len(line) > 10:
+                return line
+        return resp.strip()
 
-    # 10角度を並列実行（各4テーマ = 計40テーマ）
+    # 40スロットを並列実行
     import concurrent.futures as _cf
-    all_themes: list = []
-    with _cf.ThreadPoolExecutor(max_workers=10) as ex:
-        futures = {ex.submit(_gen_for_angle, ak, an, ad): (ak, an) for ak, an, ad in DRAFT_ANGLES}
-        # DRAFT_ANGLESの順序を保持
-        ordered = {(ak, an): None for ak, an, ad in DRAFT_ANGLES}
-        for fut in _cf.as_completed(futures):
-            ak, an = futures[fut]
+    results: list = [""] * len(ANGLE_SLOTS)
+    with _cf.ThreadPoolExecutor(max_workers=20) as ex:
+        future_map = {
+            ex.submit(_gen_one, sk, sn, sd): i
+            for i, (sk, sn, sd) in enumerate(ANGLE_SLOTS)
+        }
+        for fut in _cf.as_completed(future_map):
+            idx = future_map[fut]
             try:
-                ordered[(ak, an)] = fut.result()
+                results[idx] = fut.result()
             except Exception:
-                ordered[(ak, an)] = []
-    for ak, an, ad in DRAFT_ANGLES:
-        batch = ordered.get((ak, an)) or []
-        all_themes.extend(batch)
-    return all_themes[:40]
+                results[idx] = ""
+    return [t for t in results if t][:40]
 
 
 def generate_ideas(
