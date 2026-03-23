@@ -109,6 +109,7 @@ def _default_type_data() -> dict:
         "rejected_themes": [],
         "rejected_ideas": [],
         "edit_improvements": [],   # ユーザー編集から学習した改善ルール
+        "brushup_presets": [],     # ブラッシュアッププリセット（タイプ別）
         "stats": {"total_generated": 0, "good_count": 0, "bad_count": 0},
     }
 

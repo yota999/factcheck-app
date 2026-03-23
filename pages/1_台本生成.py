@@ -601,6 +601,8 @@ def _init():
         "sg_brushup_candidates": [],
         "sg_brushup_original": "",
         "sg_brushup_generating": False,
+        # テーマピッカー開閉フラグ
+        "sg_theme_picker_open": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -815,17 +817,97 @@ elif step == 1:
     if not themes:
         st.error("テーマ生成に失敗しました。戻って再試行してください。")
     else:
-        # 選択済みテーマ（数字なし）を display_themes（数字あり）から逆引きしてデフォルト設定
-        _selected_plain = set(st.session_state.sg_selected_themes or [])
-        _default_display = [d for d in display_themes if _strip_num_t(d) in _selected_plain]
+        # ── テーマカードグリッドピッカー ──────────────────────────────
+        selected_plain = st.session_state.sg_selected_themes or []
+        picker_open = st.session_state.get("sg_theme_picker_open", False)
 
-        selected = st.multiselect(
-            "テーマを1〜3個選択（複数選択可）",
-            options=display_themes,
-            default=_default_display,
-            max_selections=3,
-            placeholder="クリックしてテーマを選択...",
-        )
+        if not picker_open:
+            # ── 閉じた状態：選択済みチップ＋「選ぶ」ボタン ──
+            if selected_plain:
+                chips_html = " ".join([
+                    f'<span style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:20px;'
+                    f'padding:5px 14px;font-size:0.83rem;color:#1D4ED8;font-weight:600;">{t[:30]}</span>'
+                    for t in selected_plain
+                ])
+                st.markdown(f'<div style="margin-bottom:10px;line-height:2.2;">{chips_html}</div>',
+                            unsafe_allow_html=True)
+            col_open_btn, col_cnt = st.columns([4, 1])
+            with col_open_btn:
+                if st.button("📋 テーマを選ぶ / 変更する", use_container_width=True, key="sg_open_picker"):
+                    st.session_state["sg_theme_picker_open"] = True
+                    st.rerun()
+            with col_cnt:
+                if selected_plain:
+                    st.markdown(
+                        f'<div style="text-align:center;padding:8px;font-size:0.9rem;'
+                        f'color:#4338CA;font-weight:700;">{len(selected_plain)}/3</div>',
+                        unsafe_allow_html=True)
+        else:
+            # ── 開いた状態：全幅カードグリッド ──
+            n_sel = len(selected_plain)
+            st.markdown(
+                '<div style="background:linear-gradient(135deg,#EEF2FF,#F5F3FF);border-radius:14px;'
+                'padding:14px 20px;margin-bottom:18px;border:1px solid #C7D2FE;">'
+                '<div style="font-weight:700;color:#1E1B4B;font-size:0.97rem;">テーマを選んでください（最大3個）</div>'
+                '<div style="font-size:0.8rem;color:#6B7280;margin-top:4px;">'
+                '「選択する」をクリック → 「決定」で確定</div></div>',
+                unsafe_allow_html=True,
+            )
+            COLS = 3
+            for row_start in range(0, len(themes), COLS):
+                row_themes = themes[row_start:row_start + COLS]
+                cols_g = st.columns(COLS)
+                for ci, (col_g, theme_raw) in enumerate(zip(cols_g, row_themes)):
+                    plain = _strip_num_t(theme_raw)
+                    is_sel = plain in selected_plain
+                    # タイトルと補足に分割（｜区切り）
+                    if '｜' in plain:
+                        title_p, sub_p = plain.split('｜', 1)
+                        title_p = title_p.strip(); sub_p = sub_p.strip()
+                    else:
+                        title_p = plain; sub_p = ""
+                    with col_g:
+                        bg = "#EFF6FF" if is_sel else "white"
+                        bdr = "2px solid #3B82F6" if is_sel else "1px solid #E5E7EB"
+                        tc = "#1D4ED8" if is_sel else "#1F2937"
+                        chk = "✓ " if is_sel else ""
+                        sub_html = (f'<ul style="margin:6px 0 0 0;padding-left:16px;'
+                                    f'font-size:0.75rem;color:#6B7280;line-height:1.55;">'
+                                    f'<li>{sub_p}</li></ul>') if sub_p else ""
+                        st.markdown(
+                            f'<div style="background:{bg};border:{bdr};border-radius:12px;'
+                            f'padding:14px 16px;min-height:90px;margin-bottom:4px;">'
+                            f'<div style="font-weight:700;font-size:0.85rem;color:{tc};line-height:1.4;">'
+                            f'{chk}{title_p}</div>{sub_html}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        is_disabled = (not is_sel and n_sel >= 3)
+                        btn_lbl = "✓ 選択中" if is_sel else "選択する"
+                        btn_type = "primary" if is_sel else "secondary"
+                        if st.button(btn_lbl, key=f"sg_tc_{row_start + ci}",
+                                     disabled=is_disabled, use_container_width=True,
+                                     type=btn_type):
+                            if is_sel:
+                                st.session_state.sg_selected_themes = [t for t in selected_plain if t != plain]
+                            else:
+                                st.session_state.sg_selected_themes = selected_plain + [plain]
+                            st.rerun()
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            c_close, c_confirm = st.columns([1, 2])
+            with c_close:
+                if st.button("✕ 閉じる", use_container_width=True, key="sg_close_picker"):
+                    st.session_state["sg_theme_picker_open"] = False
+                    st.rerun()
+            with c_confirm:
+                n_sel2 = len(st.session_state.sg_selected_themes or [])
+                if st.button(f"✅ 決定（{n_sel2}個選択中）", type="primary",
+                             disabled=n_sel2 == 0, use_container_width=True, key="sg_confirm_picker"):
+                    st.session_state["sg_theme_picker_open"] = False
+                    st.rerun()
+
+        # ── 後続ロジック用に selected を定義 ──────────────────────────
+        selected = st.session_state.sg_selected_themes or []
 
         with st.expander("🚫 気に入らないテーマをNG登録する（次回から非表示に）"):
             ng_options = [t for t in display_themes if t not in selected]
