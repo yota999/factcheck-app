@@ -197,13 +197,15 @@ def generate_themes(
     trend_str = "\n".join(trends) or "（取得できませんでした）"
     video_str = "\n".join(video_trends) or "（取得できませんでした）"
     youtube_str = "\n".join(youtube_trends) or "（取得できませんでした）"
-    keyword_str = f"\n\n【キーワード指定（必ずこのテーマに関連したテーマを20個生成すること）】\n「{keyword}」" if keyword.strip() else ""
+    keyword_str = f"\n\n【キーワード指定（必ずこのテーマに関連させること）】\n「{keyword}」" if keyword.strip() else ""
 
-    prompt = f"""{persona}
+    def _gen_for_angle(ak: str, an: str, ad: str) -> list:
+        prompt = f"""{persona}
 
-30〜50代女性向けダイエット・健康系の{char_range}テーマを20個提案してください。{keyword_str}
+30〜50代女性向けダイエット・健康系の{char_range}テーマを4個提案してください。{keyword_str}
 
-【アングル（切り口）】「{angle_name}」を軸に展開すること
+【このバッチの角度（切り口）】「{an}」
+{ad}
 
 【使用済みテーマ（被らないこと・似たものも避ける）】
 {used_str}
@@ -214,38 +216,53 @@ def generate_themes(
 【Google最新トレンド記事（参考）】
 {trend_str}
 
-【YouTube人気動画トレンド（参考）】
-{video_str}
-
 【YouTube Data API 人気動画（参考）】
 {youtube_str}
 
 【必須ルール】
-・20個のうち必ず5個以上は「意外性・逆説・最新研究・珍しい切り口」のテーマにすること
-・残り15個はオーソドックスだが新鮮さのあるテーマにすること
+・テーマは全て「{an}」の切り口で展開すること
 ・NGテーマと似たものは絶対に出さないこと
+・他のバッチと重複しないよう独自のテーマにすること
 
 【出力形式】
-番号付きリストで20個。各テーマは「テーマタイトル｜ポイント1／ポイント2／ポイント3」の形式。
-ポイントは初心者にもわかりやすい日本語で、具体的なキーワードや視聴者が興味を引かれるフレーズを2〜3個書く。
-専門用語は使わず「〇〇が△△になる理由」「□□で××が変わる」のような直感的な表現にする。
+番号付きリストで4個のみ。各テーマは「テーマタイトル｜ポイント1／ポイント2／ポイント3」の形式。
+ポイントは初心者にもわかりやすい日本語で「〇〇が△△になる理由」「□□すると××が変わる」など直感的な表現。
+専門用語は使わないこと。
 
 1. テーマタイトル｜ポイント1／ポイント2／ポイント3
-2. テーマタイトル｜ポイント1／ポイント2
-...
-20. テーマタイトル｜ポイント1／ポイント2／ポイント3"""
+2. テーマタイトル｜ポイント1／ポイント2／ポイント3
+3. テーマタイトル｜ポイント1／ポイント2／ポイント3
+4. テーマタイトル｜ポイント1／ポイント2／ポイント3"""
 
-    response = _call_llm(prompt, model=model, temperature=0.85, max_tokens=2000)
-    themes = []
-    for line in response.split("\n"):
-        line = line.strip()
-        if not line:
-            continue
-        if len(line) > 2 and line[0].isdigit() and ". " in line:
-            themes.append(line.split(". ", 1)[1].strip())
-        elif len(line) > 2 and line[0].isdigit() and "．" in line:
-            themes.append(line.split("．", 1)[1].strip())
-    return themes[:20]
+        resp = _call_llm(prompt, model=model, temperature=0.88, max_tokens=800)
+        result = []
+        for line in resp.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            if len(line) > 2 and line[0].isdigit() and ". " in line:
+                result.append(line.split(". ", 1)[1].strip())
+            elif len(line) > 2 and line[0].isdigit() and "．" in line:
+                result.append(line.split("．", 1)[1].strip())
+        return result[:4]
+
+    # 10角度を並列実行（各4テーマ = 計40テーマ）
+    import concurrent.futures as _cf
+    all_themes: list = []
+    with _cf.ThreadPoolExecutor(max_workers=10) as ex:
+        futures = {ex.submit(_gen_for_angle, ak, an, ad): (ak, an) for ak, an, ad in DRAFT_ANGLES}
+        # DRAFT_ANGLESの順序を保持
+        ordered = {(ak, an): None for ak, an, ad in DRAFT_ANGLES}
+        for fut in _cf.as_completed(futures):
+            ak, an = futures[fut]
+            try:
+                ordered[(ak, an)] = fut.result()
+            except Exception:
+                ordered[(ak, an)] = []
+    for ak, an, ad in DRAFT_ANGLES:
+        batch = ordered.get((ak, an)) or []
+        all_themes.extend(batch)
+    return all_themes[:40]
 
 
 def generate_ideas(

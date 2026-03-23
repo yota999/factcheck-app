@@ -770,7 +770,7 @@ if step == 0:
             except Exception:
                 trends, video_trends, youtube_trends = [], [], []
 
-        with st.spinner(f"{model_name} でテーマを20個生成中...（アングル：{angle_name}）"):
+        with st.spinner(f"{model_name} で10角度×4テーマ=40個を並列生成中...（1〜2分かかります）"):
             try:
                 from script_crew import generate_themes
                 themes = generate_themes(
@@ -889,7 +889,7 @@ elif step == 1:
                 angle_key_kw, angle_name_kw = "science", "科学・データ根拠型"
                 model_id_kw = "anthropic/claude-sonnet-4-6"
 
-            with st.spinner(f"「{theme_keyword}」に関するテーマを生成中..."):
+            with st.spinner(f"「{theme_keyword}」で10角度×4テーマ=40個を並列生成中..."):
                 try:
                     from script_crew import fetch_all_trends, generate_themes
                     trends_kw, video_trends_kw, youtube_trends_kw = fetch_all_trends()
@@ -1062,7 +1062,7 @@ elif step == 1:
                 st.session_state.sg_current_angle = (angle_key, angle_name)
                 st.session_state.sg_current_ai = (model_id, model_name)
 
-                with st.spinner(f"{model_name} で再生成中..."):
+                with st.spinner(f"{model_name} で10角度×4テーマ=40個を並列再生成中..."):
                     try:
                         from script_crew import fetch_all_trends, generate_themes
                         trends, video_trends, youtube_trends = fetch_all_trends()
