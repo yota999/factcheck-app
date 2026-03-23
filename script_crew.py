@@ -187,6 +187,7 @@ def generate_themes(
     youtube_trends: list,
     angle_name: str,
     model: str = "anthropic/claude-sonnet-4-6",
+    keyword: str = "",
 ) -> list:
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
     char_range = "4500〜5000文字のYouTube台本" if script_type == "youtube" else "700〜800文字のリール動画台本"
@@ -196,10 +197,11 @@ def generate_themes(
     trend_str = "\n".join(trends) or "（取得できませんでした）"
     video_str = "\n".join(video_trends) or "（取得できませんでした）"
     youtube_str = "\n".join(youtube_trends) or "（取得できませんでした）"
+    keyword_str = f"\n\n【キーワード指定（必ずこのテーマに関連したテーマを20個生成すること）】\n「{keyword}」" if keyword.strip() else ""
 
     prompt = f"""{persona}
 
-30〜50代女性向けダイエット・健康系の{char_range}テーマを20個提案してください。
+30〜50代女性向けダイエット・健康系の{char_range}テーマを20個提案してください。{keyword_str}
 
 【アングル（切り口）】「{angle_name}」を軸に展開すること
 

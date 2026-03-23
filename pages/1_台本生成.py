@@ -857,6 +857,59 @@ elif step == 1:
                 unsafe_allow_html=True,
             )
 
+        # ── キーワードでテーマ再生成 ──────────────────────────────────
+        st.markdown(
+            '<div style="background:white;border:1px solid #E0E7FF;border-radius:14px;'
+            'padding:14px 18px;margin-bottom:16px;">'
+            '<div style="font-size:0.82rem;color:#4338CA;font-weight:600;margin-bottom:8px;">'
+            '🔍 キーワードでテーマを絞り込む</div></div>',
+            unsafe_allow_html=True,
+        )
+        kw_col, btn_col = st.columns([5, 1])
+        with kw_col:
+            theme_keyword = st.text_input(
+                "キーワード",
+                placeholder="例：糖質制限、筋トレ、更年期、睡眠、腸活...",
+                label_visibility="collapsed",
+                key="sg_theme_keyword",
+            )
+        with btn_col:
+            kw_regen = st.button("再生成", key="sg_kw_regen", use_container_width=True,
+                                 disabled=not theme_keyword.strip())
+
+        if kw_regen and theme_keyword.strip():
+            try:
+                from memory_manager import get_used_themes, get_next_angle, get_next_ai, get_rejected_themes
+                used_themes_kw = get_used_themes(st.session_state.sg_script_type)
+                rejected_themes_kw = get_rejected_themes(st.session_state.sg_script_type)
+                angle_key_kw, angle_name_kw = get_next_angle(st.session_state.sg_script_type)
+                model_id_kw, _ = get_next_ai(st.session_state.sg_script_type)
+            except Exception:
+                used_themes_kw, rejected_themes_kw = [], []
+                angle_key_kw, angle_name_kw = "science", "科学・データ根拠型"
+                model_id_kw = "anthropic/claude-sonnet-4-6"
+
+            with st.spinner(f"「{theme_keyword}」に関するテーマを生成中..."):
+                try:
+                    from script_crew import fetch_all_trends, generate_themes
+                    trends_kw, video_trends_kw, youtube_trends_kw = fetch_all_trends()
+                    new_themes_kw = generate_themes(
+                        script_type=st.session_state.sg_script_type,
+                        used_themes=used_themes_kw,
+                        rejected_themes=rejected_themes_kw,
+                        trends=trends_kw, video_trends=video_trends_kw,
+                        youtube_trends=youtube_trends_kw,
+                        angle_name=angle_name_kw, model=model_id_kw,
+                        keyword=theme_keyword.strip(),
+                    )
+                    st.session_state.sg_themes = new_themes_kw
+                    st.session_state.sg_selected_themes = []
+                    st.session_state.sg_current_angle = (angle_key_kw, angle_name_kw)
+                    st.session_state["sg_process_done_toast"] = f"「{theme_keyword}」のテーマ生成完了"
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"エラー: {e}")
+
         # ── テーマカードグリッド（常に表示）──────────────────────────
         COLS = 2
         for row_start in range(0, len(themes), COLS):
