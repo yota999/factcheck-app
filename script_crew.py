@@ -624,6 +624,56 @@ def factcheck_parallel(script: str) -> list:
     return results
 
 
+# ── ファクトチェック自動修正 ──────────────────────────────────────────
+
+def auto_correct_script(original: str, fc_results: list, model: str = "anthropic/claude-sonnet-4-6") -> dict:
+    """4モデルのFC結果を統合して自動修正版テキストを生成する"""
+    # 各モデルの問題指摘をまとめる
+    issues_text = ""
+    for r in fc_results:
+        if r and not r.get("error") and r.get("text"):
+            issues_text += f"\n\n=== {r['model_name']} の指摘 ===\n{r['text']}"
+
+    prompt = f"""あなたは優秀な台本編集者です。
+以下の【元の台本】に対して、4つのAIがファクトチェックを行いました。
+その結果を参考に、問題のある表現・数字・事実を修正した【修正版台本】を作成してください。
+
+【元の台本】
+{original}
+
+【ファクトチェック結果（4AI）】
+{issues_text}
+
+【修正のルール】
+- ❌問題あり・⚠️要注意と指摘された箇所を中心に修正する
+- 具体的な数字で複数AIが問題視しているものは「諸説あります」「一説によると」など曖昧な表現に変える
+- 明確に誤りと判定されたものは修正または削除する
+- ✅正確と判定された箇所は変更しない
+- 文体・全体の流れは元の台本を維持する
+- 修正箇所が分かるよう、変更した部分の説明も最後に箇条書きで添える
+
+【出力形式】
+## 修正版台本
+（修正した台本の全文）
+
+## 修正箇所の説明
+- （変更点1）
+- （変更点2）
+..."""
+
+    try:
+        text = _call_llm(prompt, model=model, temperature=0.2, max_tokens=4000)
+        # 修正版台本と説明を分離
+        import re
+        script_match = re.search(r'## 修正版台本\s*\n(.*?)(?=\n## |\Z)', text, re.DOTALL)
+        changes_match = re.search(r'## 修正箇所の説明\s*\n(.*?)(?=\n## |\Z)', text, re.DOTALL)
+        corrected = script_match.group(1).strip() if script_match else text
+        changes = changes_match.group(1).strip() if changes_match else ""
+        return {"corrected": corrected, "changes": changes, "error": None}
+    except Exception as e:
+        return {"corrected": "", "changes": "", "error": str(e)}
+
+
 # ── 部分ブラッシュアップ ──────────────────────────────────────────────
 
 def generate_brushup_candidates(
