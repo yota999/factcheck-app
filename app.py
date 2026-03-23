@@ -1,8 +1,10 @@
 import os
 import time
 import threading
+import json
 
 import streamlit as st
+import streamlit.components.v1 as components
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
@@ -317,24 +319,19 @@ if st.session_state.fc_done and st.session_state.fc_results:
                         f'<div class="diff-corrected">{corrected_text}</div>',
                         unsafe_allow_html=True,
                     )
-                    st.text_area(
-                        "修正版（コピー用）",
-                        value=corrected_text,
-                        height=200,
-                        key="fc_copy_area",
-                    )
-
-                # 修正箇所の説明
-                changes = correction.get("changes", "")
-                if changes:
-                    st.markdown("#### 📋 修正箇所の説明")
-                    for line in changes.split("\n"):
-                        s = line.strip("- •・").strip()
-                        if s:
-                            st.markdown(
-                                f'<div class="change-item">・{s}</div>',
-                                unsafe_allow_html=True,
-                            )
+                    components.html(f"""
+                    <button onclick="
+                        var t={json.dumps(corrected_text)};
+                        navigator.clipboard.writeText(t).then(function(){{
+                            var b=document.getElementById('cpybtn');
+                            b.innerText='✅ コピーしました！';
+                            b.style.background='#059669';
+                            setTimeout(function(){{b.innerText='📋 コピー';b.style.background='#1D4ED8';}},2000);
+                        }});
+                    " id="cpybtn" style="background:#1D4ED8;color:white;border:none;border-radius:8px;
+                    padding:10px 20px;font-size:0.88rem;cursor:pointer;width:100%;
+                    font-family:sans-serif;font-weight:600;margin-top:6px;">📋 コピー</button>
+                    """, height=52)
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -399,12 +396,19 @@ if st.session_state.fc_done and st.session_state.fc_results:
                             f'<div class="diff-corrected">{revised_text}</div>',
                             unsafe_allow_html=True,
                         )
-                        st.text_area(
-                            "改訂版（コピー用）",
-                            value=revised_text,
-                            height=200,
-                            key="fc_revision_copy_area",
-                        )
+                        components.html(f"""
+                        <button onclick="
+                            var t={json.dumps(revised_text)};
+                            navigator.clipboard.writeText(t).then(function(){{
+                                var b=document.getElementById('cpybtn2');
+                                b.innerText='✅ コピーしました！';
+                                b.style.background='#059669';
+                                setTimeout(function(){{b.innerText='📋 コピー';b.style.background='#1D4ED8';}},2000);
+                            }});
+                        " id="cpybtn2" style="background:#1D4ED8;color:white;border:none;border-radius:8px;
+                        padding:10px 20px;font-size:0.88rem;cursor:pointer;width:100%;
+                        font-family:sans-serif;font-weight:600;margin-top:6px;">📋 コピー</button>
+                        """, height=52)
                         revision_changes = revision.get("changes", "")
                         if revision_changes:
                             st.markdown("**変更箇所**")
@@ -418,6 +422,19 @@ if st.session_state.fc_done and st.session_state.fc_results:
                         if st.button("🗑️ 改訂をリセット", key="reset_revision"):
                             st.session_state.fc_revision = {}
                             st.rerun()
+
+                # 修正箇所の説明（指示セクションの下）
+                changes = correction.get("changes", "")
+                if changes:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.markdown("#### 📋 修正箇所の説明")
+                    for line in changes.split("\n"):
+                        s = line.strip("- •・").strip()
+                        if s:
+                            st.markdown(
+                                f'<div class="change-item">・{s}</div>',
+                                unsafe_allow_html=True,
+                            )
 
     # ─── ② ファクトチェック結果（最下部）───────────────────────────
     st.markdown("---")
