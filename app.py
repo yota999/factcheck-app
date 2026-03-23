@@ -83,6 +83,7 @@ _DEFAULTS = {
     "fc_input": "",
     "fc_results": [],
     "fc_correction": {},
+    "fc_revision": {},
     "fc_running": False,
     "fc_done": False,
     "fc_variants": [],
@@ -164,8 +165,20 @@ if run_btn and input_text and input_text.strip():
 
     def _run_fc():
         try:
-            from script_crew import factcheck_parallel
-            result_holder["fc"] = factcheck_parallel(input_text)
+            from script_crew import factcheck_parallel, auto_correct_script
+            fc_results = factcheck_parallel(input_text)
+            result_holder["fc"] = fc_results
+            result_holder["fc_done"] = True  # FCフェーズ完了
+
+            # 問題があれば自動修正も続けて実行
+            verdicts = [r.get("verdict", "❓") for r in fc_results if r]
+            if any(v in ["⚠️", "❌"] for v in verdicts):
+                correction = auto_correct_script(
+                    original=input_text,
+                    fc_results=fc_results,
+                    model="anthropic/claude-sonnet-4-6",
+                )
+                result_holder["correction"] = correction
         except Exception as e:
             result_holder["error"] = str(e)
 
@@ -174,7 +187,7 @@ if run_btn and input_text and input_text.strip():
 
     # 進捗表示
     st.markdown("---")
-    st.markdown("### ⚙️ 4つのAIが並列検証中...")
+    st.markdown("### ⚙️ ファクトチェック＋自動修正を実行中...")
 
     MODEL_LABELS = [
         ("Claude Sonnet 4.6", "🟣"),
@@ -205,7 +218,10 @@ if run_btn and input_text and input_text.strip():
         elapsed += 1
         prog.progress(min(90, elapsed * 2))
         dots = "." * ((elapsed % 3) + 1)
-        status_ph.info(f"4つのAIが独立並列でファクトチェック中{dots}")
+        if result_holder.get("fc_done"):
+            status_ph.info(f"✅ ファクトチェック完了 → 自動修正を生成中{dots}")
+        else:
+            status_ph.info(f"4つのAIが独立並列でファクトチェック中{dots}")
         time.sleep(1)
 
     t.join()
@@ -228,6 +244,8 @@ if run_btn and input_text and input_text.strip():
         st.error(f"エラー: {result_holder['error']}")
     else:
         st.session_state.fc_results = result_holder.get("fc", [])
+        if "correction" in result_holder:
+            st.session_state.fc_correction = result_holder["correction"]
         st.session_state.fc_done = True
         st.rerun()
 
@@ -382,12 +400,82 @@ if st.session_state.fc_done and st.session_state.fc_results:
                 with col_redo:
                     if st.button("🔄 修正をやり直す", use_container_width=True):
                         st.session_state.fc_correction = {}
+                        st.session_state.fc_revision = {}
                         st.rerun()
                 with col_new:
                     if st.button("📝 新しいテキストをチェック", use_container_width=True):
-                        for k in ["fc_input","fc_results","fc_correction","fc_done"]:
+                        for k in ["fc_input","fc_results","fc_correction","fc_done","fc_revision"]:
                             st.session_state[k] = _DEFAULTS[k]
                         st.rerun()
+
+                # ── 追加修正指示セクション ────────────────────────────
+                st.markdown("---")
+                st.markdown("#### ✍️ 修正版にさらに指示を出す")
+                st.caption("修正版テキストを元に、追加の指示で文章を改訂できます。複数回繰り返すことも可能です。")
+
+                instruction_input = st.text_area(
+                    "修正の指示",
+                    height=100,
+                    placeholder="例：「第2段落の表現をもっと柔らかくしてください」「数字の部分を削除して」など",
+                    key="fc_revision_instruction",
+                )
+
+                # 改訂のベースは「前の改訂版」or「自動修正版」
+                base_text_for_revision = (
+                    st.session_state.fc_revision.get("revised") or corrected_text
+                )
+
+                col_ins_l, col_ins_c, col_ins_r = st.columns([1, 2, 1])
+                with col_ins_c:
+                    if st.button(
+                        "✏️ 指示を反映して改訂",
+                        use_container_width=True,
+                        disabled=not bool(instruction_input and instruction_input.strip()),
+                        key="apply_revision_btn",
+                    ):
+                        with st.spinner("指示を反映して改訂中..."):
+                            try:
+                                from script_crew import revise_with_instruction
+                                revision = revise_with_instruction(
+                                    current_text=base_text_for_revision,
+                                    instruction=instruction_input,
+                                    original=st.session_state.fc_input,
+                                )
+                                st.session_state.fc_revision = revision
+                            except Exception as e:
+                                st.error(f"改訂エラー: {e}")
+                        st.rerun()
+
+                if st.session_state.fc_revision:
+                    revision = st.session_state.fc_revision
+                    if revision.get("error"):
+                        st.error(f"改訂エラー: {revision['error']}")
+                    else:
+                        revised_text = revision.get("revised", "")
+                        st.markdown("**改訂後**")
+                        st.markdown(
+                            f'<div class="diff-corrected">{revised_text}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.text_area(
+                            "改訂版（コピー用）",
+                            value=revised_text,
+                            height=200,
+                            key="fc_revision_copy_area",
+                        )
+                        revision_changes = revision.get("changes", "")
+                        if revision_changes:
+                            st.markdown("**変更箇所**")
+                            for line in revision_changes.split("\n"):
+                                s = line.strip("- •・").strip()
+                                if s:
+                                    st.markdown(
+                                        f'<div class="change-item">・{s}</div>',
+                                        unsafe_allow_html=True,
+                                    )
+                        if st.button("🗑️ 改訂をリセット", key="reset_revision"):
+                            st.session_state.fc_revision = {}
+                            st.rerun()
 
     # ─── バリアント生成 ────────────────────────────────────────────
     st.markdown("---")
@@ -444,7 +532,7 @@ if st.session_state.fc_done and st.session_state.fc_results:
     # ─── 最初からやり直す ─────────────────────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("↩️ 最初からやり直す", type="secondary"):
-        for k in ["fc_input","fc_results","fc_correction","fc_done","fc_variants"]:
+        for k in ["fc_input","fc_results","fc_correction","fc_revision","fc_done","fc_variants"]:
             st.session_state[k] = _DEFAULTS[k]
         st.rerun()
 
