@@ -682,6 +682,7 @@ if step == 0:
                      type="primary" if current_type == "youtube" else "secondary",
                      key="sel_yt"):
             st.session_state.sg_script_type = "youtube"
+            st.session_state["sg_auto_gen_themes"] = True
             st.rerun()
 
     with col_rl:
@@ -696,6 +697,7 @@ if step == 0:
                      type="primary" if current_type == "reel" else "secondary",
                      key="sel_rl"):
             st.session_state.sg_script_type = "reel"
+            st.session_state["sg_auto_gen_themes"] = True
             st.rerun()
 
     script_type = current_type
@@ -740,7 +742,12 @@ if step == 0:
 </div>''', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("テーマを自動生成する →", type="primary", use_container_width=True):
+
+    # ── タイプ選択ボタンが押されたら自動でテーマ生成を開始 ──
+    auto_gen = st.session_state.get("sg_auto_gen_themes", False)
+    if auto_gen:
+        st.session_state["sg_auto_gen_themes"] = False  # フラグリセット
+    if auto_gen or st.button("テーマを自動生成する →", type="primary", use_container_width=True):
         st.session_state.sg_script_type = script_type
         try:
             from memory_manager import get_used_themes, get_next_angle, get_next_ai, get_rejected_themes
@@ -870,29 +877,40 @@ elif step == 1:
 
                 with col_g:
                     if is_sel:
-                        card_bg = "linear-gradient(135deg,#EFF6FF 0%,#DBEAFE 100%)"
+                        card_bg = "linear-gradient(135deg,#DBEAFE 0%,#C7D2FE 100%)"
                         card_bdr = "2px solid #3B82F6"
-                        card_shadow = "0 4px 16px rgba(59,130,246,.2)"
+                        card_shadow = "0 4px 16px rgba(59,130,246,.25)"
                         num_bg = "#3B82F6"; num_color = "white"
                         title_color = "#1E40AF"
-                        sub_color = "#3B82F6"
+                        sub_color = "#1E40AF"
+                        bullet_bg = "#BFDBFE"
                         badge = ('<div style="position:absolute;top:10px;right:12px;background:#3B82F6;'
                                  'color:white;border-radius:20px;padding:2px 10px;font-size:0.72rem;'
                                  'font-weight:700;box-shadow:0 2px 6px rgba(59,130,246,.3);">✓ 選択中</div>')
                     else:
-                        card_bg = "white"
-                        card_bdr = "1px solid #E5E7EB"
-                        card_shadow = "0 1px 4px rgba(0,0,0,.04)"
-                        num_bg = "#F3F4F6"; num_color = "#6B7280"
-                        title_color = "#1F2937"
-                        sub_color = "#6B7280"
+                        card_bg = "linear-gradient(135deg,#FAFBFF 0%,#F3F0FF 100%)"
+                        card_bdr = "1px solid #E0E7FF"
+                        card_shadow = "0 2px 8px rgba(99,102,241,.06)"
+                        num_bg = "#6366F1"; num_color = "white"
+                        title_color = "#1E1B4B"
+                        sub_color = "#4B5563"
+                        bullet_bg = "#EDE9FE"
                         badge = ""
 
-                    sub_html = (
-                        f'<div style="font-size:0.76rem;color:{sub_color};line-height:1.6;'
-                        f'margin-top:8px;padding-left:2px;">'
-                        f'<span style="color:#9CA3AF;margin-right:4px;">▸</span>{sub_p}</div>'
-                    ) if sub_p else ""
+                    # 補足テキストを「／」で分割して箇条書き化
+                    if sub_p:
+                        points = [p.strip() for p in sub_p.replace('/', '／').split('／') if p.strip()]
+                        bullets_html = "".join(
+                            f'<div style="display:flex;align-items:flex-start;gap:6px;margin-top:5px;">'
+                            f'<span style="background:{bullet_bg};color:{sub_color};border-radius:4px;'
+                            f'padding:1px 6px;font-size:0.68rem;font-weight:600;flex-shrink:0;">▸</span>'
+                            f'<span style="font-size:0.78rem;color:{sub_color};line-height:1.5;">{pt}</span>'
+                            f'</div>'
+                            for pt in points
+                        )
+                        sub_html = f'<div style="margin-top:10px;">{bullets_html}</div>'
+                    else:
+                        sub_html = ""
 
                     st.markdown(
                         f'<div style="position:relative;background:{card_bg};border:{card_bdr};'
