@@ -275,17 +275,22 @@ def generate_themes(
 ・NGテーマと似たものは出さないこと
 ・専門用語は使わず直感的な言葉にすること
 
-【出力形式】（1行のみ・番号不要）
-テーマタイトル｜ポイント1（初心者向けのわかりやすい補足）／ポイント2／ポイント3"""
+【出力形式】（1行のみ・番号不要・以下の例のような形式で）
+例：40代から筋肉が落ちる本当の理由｜運動しても痩せにくくなる仕組み／食事より先に変えるべきこと／今から間に合う対策
+
+実際のテーマを1行で出力してください（「テーマタイトル」「ポイント1」などのプレースホルダーはそのまま書かないこと）"""
 
         resp = _call_llm(prompt, model=model, temperature=0.9, max_tokens=200)
-        # 番号付きの行があれば番号を除去
+        # 番号付きの行があれば番号を除去、プレースホルダーをスキップ
         for line in resp.split("\n"):
             line = line.strip()
             if not line:
                 continue
             if len(line) > 2 and line[0].isdigit() and ". " in line:
                 line = line.split(". ", 1)[1].strip()
+            # 「テーマタイトル」がそのまま出た行はスキップ
+            if line.startswith("テーマタイトル") or line.startswith("例："):
+                continue
             if "｜" in line or len(line) > 10:
                 return line
         return resp.strip()
@@ -736,6 +741,52 @@ def auto_correct_script(original: str, fc_results: list, model: str = "anthropic
         return {"corrected": corrected, "changes": changes, "error": None}
     except Exception as e:
         return {"corrected": "", "changes": "", "error": str(e)}
+
+
+# ── 追加修正指示による改訂 ────────────────────────────────────────────
+
+def revise_with_instruction(
+    current_text: str,
+    instruction: str,
+    original: str = "",
+    model: str = "anthropic/claude-sonnet-4-6",
+) -> dict:
+    """ユーザーの指示に基づいて修正済み文章をさらに改訂する"""
+    original_section = f"\n【元の台本（参考）】\n{original}\n" if original else ""
+
+    prompt = f"""あなたは優秀な台本編集者です。
+以下の【現在の文章】に対して、【修正指示】の内容を反映した改訂版を作成してください。{original_section}
+【現在の文章】
+{current_text}
+
+【修正指示】
+{instruction}
+
+【ルール】
+- 指示された箇所のみを変更する
+- 指示されていない部分は変えない
+- 文体・全体の流れを維持する
+- 変更した箇所の説明を最後に箇条書きで添える
+
+【出力形式】
+## 改訂版
+（改訂した文章の全文）
+
+## 変更箇所
+- （変更点1）
+- （変更点2）
+..."""
+
+    try:
+        text = _call_llm(prompt, model=model, temperature=0.2, max_tokens=4000)
+        import re
+        revised_match = re.search(r'## 改訂版\s*\n(.*?)(?=\n## |\Z)', text, re.DOTALL)
+        changes_match = re.search(r'## 変更箇所\s*\n(.*?)(?=\n## |\Z)', text, re.DOTALL)
+        revised = revised_match.group(1).strip() if revised_match else text
+        changes = changes_match.group(1).strip() if changes_match else ""
+        return {"revised": revised, "changes": changes, "error": None}
+    except Exception as e:
+        return {"revised": "", "changes": "", "error": str(e)}
 
 
 # ── FC後バリアント生成 ────────────────────────────────────────────────
