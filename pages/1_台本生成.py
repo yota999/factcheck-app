@@ -817,134 +817,157 @@ elif step == 1:
     if not themes:
         st.error("テーマ生成に失敗しました。戻って再試行してください。")
     else:
-        # ── テーマカードグリッドピッカー ──────────────────────────────
         selected_plain = st.session_state.sg_selected_themes or []
-        picker_open = st.session_state.get("sg_theme_picker_open", False)
+        n_sel = len(selected_plain)
 
-        if not picker_open:
-            # ── 閉じた状態：選択済みチップ＋「選ぶ」ボタン ──
-            if selected_plain:
-                chips_html = " ".join([
-                    f'<span style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:20px;'
-                    f'padding:5px 14px;font-size:0.83rem;color:#1D4ED8;font-weight:600;">{t[:30]}</span>'
-                    for t in selected_plain
-                ])
-                st.markdown(f'<div style="margin-bottom:10px;line-height:2.2;">{chips_html}</div>',
-                            unsafe_allow_html=True)
-            col_open_btn, col_cnt = st.columns([4, 1])
-            with col_open_btn:
-                if st.button("📋 テーマを選ぶ / 変更する", use_container_width=True, key="sg_open_picker"):
-                    st.session_state["sg_theme_picker_open"] = True
-                    st.rerun()
-            with col_cnt:
-                if selected_plain:
-                    st.markdown(
-                        f'<div style="text-align:center;padding:8px;font-size:0.9rem;'
-                        f'color:#4338CA;font-weight:700;">{len(selected_plain)}/3</div>',
-                        unsafe_allow_html=True)
-        else:
-            # ── 開いた状態：全幅カードグリッド ──
-            n_sel = len(selected_plain)
+        # ── 選択ステータスバー ────────────────────────────────────
+        if selected_plain:
+            chips_html = "".join([
+                f'<div style="display:inline-flex;align-items:center;gap:6px;'
+                f'background:linear-gradient(135deg,#6366F1,#8B5CF6);border-radius:24px;'
+                f'padding:6px 16px;margin:3px 6px 3px 0;box-shadow:0 2px 8px rgba(99,102,241,.25);">'
+                f'<span style="font-size:0.82rem;color:white;font-weight:600;">{t.split("｜")[0][:25]}</span>'
+                f'</div>'
+                for t in selected_plain
+            ])
             st.markdown(
-                '<div style="background:linear-gradient(135deg,#EEF2FF,#F5F3FF);border-radius:14px;'
-                'padding:14px 20px;margin-bottom:18px;border:1px solid #C7D2FE;">'
-                '<div style="font-weight:700;color:#1E1B4B;font-size:0.97rem;">テーマを選んでください（最大3個）</div>'
-                '<div style="font-size:0.8rem;color:#6B7280;margin-top:4px;">'
-                '「選択する」をクリック → 「決定」で確定</div></div>',
+                f'<div style="background:white;border:1px solid #E5E7EB;border-radius:14px;'
+                f'padding:12px 18px;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,.04);">'
+                f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
+                f'<span style="font-size:0.78rem;color:#6B7280;font-weight:600;text-transform:uppercase;'
+                f'letter-spacing:.06em;">選択中のテーマ</span>'
+                f'<span style="background:#EEF2FF;color:#4338CA;font-weight:700;font-size:0.82rem;'
+                f'padding:3px 12px;border-radius:20px;">{n_sel}/3</span></div>'
+                f'<div style="line-height:2.2;">{chips_html}</div></div>',
                 unsafe_allow_html=True,
             )
-            COLS = 3
-            for row_start in range(0, len(themes), COLS):
-                row_themes = themes[row_start:row_start + COLS]
-                cols_g = st.columns(COLS)
-                for ci, (col_g, theme_raw) in enumerate(zip(cols_g, row_themes)):
-                    plain = _strip_num_t(theme_raw)
-                    is_sel = plain in selected_plain
-                    # タイトルと補足に分割（｜区切り）
-                    if '｜' in plain:
-                        title_p, sub_p = plain.split('｜', 1)
-                        title_p = title_p.strip(); sub_p = sub_p.strip()
+        else:
+            st.markdown(
+                '<div style="background:linear-gradient(135deg,#FFF7ED,#FFFBEB);border:1px solid #FDE68A;'
+                'border-radius:14px;padding:14px 18px;margin-bottom:18px;">'
+                '<div style="font-weight:600;color:#92400E;font-size:0.88rem;">'
+                '👇 カードをタップしてテーマを選択してください（最大3個）</div></div>',
+                unsafe_allow_html=True,
+            )
+
+        # ── テーマカードグリッド（常に表示）──────────────────────────
+        COLS = 2
+        for row_start in range(0, len(themes), COLS):
+            row_themes = themes[row_start:row_start + COLS]
+            cols_g = st.columns(COLS)
+            for ci, (col_g, theme_raw) in enumerate(zip(cols_g, row_themes)):
+                idx = row_start + ci
+                plain = _strip_num_t(theme_raw)
+                is_sel = plain in selected_plain
+                num_label = CIRCLE_NUMS_T[idx] if idx < len(CIRCLE_NUMS_T) else str(idx + 1)
+
+                # タイトルと補足に分割
+                if '｜' in plain:
+                    title_p, sub_p = plain.split('｜', 1)
+                    title_p = title_p.strip(); sub_p = sub_p.strip()
+                else:
+                    title_p = plain; sub_p = ""
+
+                with col_g:
+                    if is_sel:
+                        card_bg = "linear-gradient(135deg,#EFF6FF 0%,#DBEAFE 100%)"
+                        card_bdr = "2px solid #3B82F6"
+                        card_shadow = "0 4px 16px rgba(59,130,246,.2)"
+                        num_bg = "#3B82F6"; num_color = "white"
+                        title_color = "#1E40AF"
+                        sub_color = "#3B82F6"
+                        badge = ('<div style="position:absolute;top:10px;right:12px;background:#3B82F6;'
+                                 'color:white;border-radius:20px;padding:2px 10px;font-size:0.72rem;'
+                                 'font-weight:700;box-shadow:0 2px 6px rgba(59,130,246,.3);">✓ 選択中</div>')
                     else:
-                        title_p = plain; sub_p = ""
-                    with col_g:
-                        bg = "#EFF6FF" if is_sel else "white"
-                        bdr = "2px solid #3B82F6" if is_sel else "1px solid #E5E7EB"
-                        tc = "#1D4ED8" if is_sel else "#1F2937"
-                        chk = "✓ " if is_sel else ""
-                        sub_html = (f'<ul style="margin:6px 0 0 0;padding-left:16px;'
-                                    f'font-size:0.75rem;color:#6B7280;line-height:1.55;">'
-                                    f'<li>{sub_p}</li></ul>') if sub_p else ""
-                        st.markdown(
-                            f'<div style="background:{bg};border:{bdr};border-radius:12px;'
-                            f'padding:14px 16px;min-height:90px;margin-bottom:4px;">'
-                            f'<div style="font-weight:700;font-size:0.85rem;color:{tc};line-height:1.4;">'
-                            f'{chk}{title_p}</div>{sub_html}</div>',
-                            unsafe_allow_html=True,
-                        )
-                        is_disabled = (not is_sel and n_sel >= 3)
-                        btn_lbl = "✓ 選択中" if is_sel else "選択する"
+                        card_bg = "white"
+                        card_bdr = "1px solid #E5E7EB"
+                        card_shadow = "0 1px 4px rgba(0,0,0,.04)"
+                        num_bg = "#F3F4F6"; num_color = "#6B7280"
+                        title_color = "#1F2937"
+                        sub_color = "#6B7280"
+                        badge = ""
+
+                    sub_html = (
+                        f'<div style="font-size:0.76rem;color:{sub_color};line-height:1.6;'
+                        f'margin-top:8px;padding-left:2px;">'
+                        f'<span style="color:#9CA3AF;margin-right:4px;">▸</span>{sub_p}</div>'
+                    ) if sub_p else ""
+
+                    st.markdown(
+                        f'<div style="position:relative;background:{card_bg};border:{card_bdr};'
+                        f'border-radius:16px;padding:18px 20px;min-height:100px;margin-bottom:6px;'
+                        f'box-shadow:{card_shadow};transition:all .15s ease;">'
+                        f'{badge}'
+                        f'<div style="display:flex;align-items:flex-start;gap:10px;">'
+                        f'<div style="background:{num_bg};color:{num_color};border-radius:50%;'
+                        f'width:28px;height:28px;display:flex;align-items:center;justify-content:center;'
+                        f'font-size:0.78rem;font-weight:700;flex-shrink:0;">{num_label}</div>'
+                        f'<div style="flex:1;min-width:0;">'
+                        f'<div style="font-weight:700;font-size:0.88rem;color:{title_color};'
+                        f'line-height:1.45;">{title_p}</div>'
+                        f'{sub_html}'
+                        f'</div></div></div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    # ── ボタン行：選択 / NG ──
+                    is_full = (not is_sel and n_sel >= 3)
+                    bc1, bc2 = st.columns([3, 1])
+                    with bc1:
+                        btn_lbl = "✓ 選択中（解除）" if is_sel else "＋ 選択する"
                         btn_type = "primary" if is_sel else "secondary"
-                        if st.button(btn_lbl, key=f"sg_tc_{row_start + ci}",
-                                     disabled=is_disabled, use_container_width=True,
-                                     type=btn_type):
+                        if st.button(btn_lbl, key=f"sg_tc_{idx}",
+                                     disabled=is_full, use_container_width=True, type=btn_type):
                             if is_sel:
                                 st.session_state.sg_selected_themes = [t for t in selected_plain if t != plain]
                             else:
                                 st.session_state.sg_selected_themes = selected_plain + [plain]
                             st.rerun()
+                    with bc2:
+                        if st.button("🚫", key=f"sg_ng_{idx}", help="このテーマをNG登録",
+                                     use_container_width=True):
+                            try:
+                                from memory_manager import add_rejected_themes
+                                add_rejected_themes([plain], st.session_state.sg_script_type)
+                                # テーマリストから削除
+                                st.session_state.sg_themes = [t for t in st.session_state.sg_themes
+                                                              if _strip_num_t(t) != plain]
+                                st.session_state.sg_selected_themes = [t for t in selected_plain if t != plain]
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"NG登録エラー: {e}")
 
-            st.markdown("<br>", unsafe_allow_html=True)
-            c_close, c_confirm = st.columns([1, 2])
-            with c_close:
-                if st.button("✕ 閉じる", use_container_width=True, key="sg_close_picker"):
-                    st.session_state["sg_theme_picker_open"] = False
-                    st.rerun()
-            with c_confirm:
-                n_sel2 = len(st.session_state.sg_selected_themes or [])
-                if st.button(f"✅ 決定（{n_sel2}個選択中）", type="primary",
-                             disabled=n_sel2 == 0, use_container_width=True, key="sg_confirm_picker"):
-                    st.session_state["sg_theme_picker_open"] = False
-                    st.rerun()
+        # ── カスタムテーマ追加 ──
+        st.markdown(
+            '<div style="background:white;border:1px dashed #C7D2FE;border-radius:14px;'
+            'padding:14px 18px;margin-top:10px;">'
+            '<div style="font-size:0.82rem;color:#4338CA;font-weight:600;margin-bottom:8px;">'
+            '✏️ リストにないテーマを追加</div></div>',
+            unsafe_allow_html=True,
+        )
+        c1, c2 = st.columns([5, 1])
+        with c1:
+            custom_theme = st.text_input("カスタムテーマ",
+                placeholder="例：更年期後の筋肉量低下を防ぐ方法",
+                label_visibility="collapsed", key="sg_custom_theme_input")
+        with c2:
+            if st.button("＋追加", key="sg_add_theme",
+                         disabled=not custom_theme.strip() or n_sel >= 3,
+                         use_container_width=True):
+                new_t = custom_theme.strip()
+                if new_t not in st.session_state.sg_themes:
+                    st.session_state.sg_themes.append(new_t)
+                current_sel = list(st.session_state.sg_selected_themes or [])
+                if new_t not in current_sel:
+                    current_sel.append(new_t)
+                st.session_state.sg_selected_themes = current_sel
+                st.rerun()
+        if n_sel >= 3:
+            st.caption("（3個選択済みのため追加できません）")
 
-        # ── 後続ロジック用に selected を定義 ──────────────────────────
+        # ── 後続ロジック用 ──
         selected = st.session_state.sg_selected_themes or []
-
-        with st.expander("🚫 気に入らないテーマをNG登録する（次回から非表示に）"):
-            ng_options = [t for t in display_themes if t not in selected]
-            ng_selected = st.multiselect(
-                "NG登録するテーマを選択", options=ng_options, default=[],
-                key="sg_ng_theme_select", placeholder="気に入らないテーマを選ぶ...",
-            )
-            if st.button("🚫 NG登録する", key="sg_ng_theme_btn", disabled=not ng_selected):
-                try:
-                    from memory_manager import add_rejected_themes
-                    add_rejected_themes([_strip_num_t(x) for x in ng_selected],
-                                        st.session_state.sg_script_type)
-                    st.success(f"{len(ng_selected)}件をNG登録しました")
-                except Exception as e:
-                    st.error(f"保存エラー: {e}")
-
-        with st.expander("✏️ リストにないテーマを直接入力して追加"):
-            c1, c2 = st.columns([4, 1])
-            with c1:
-                custom_theme = st.text_input("カスタムテーマ",
-                    placeholder="例：更年期後の筋肉量低下を防ぐ方法",
-                    label_visibility="collapsed", key="sg_custom_theme_input")
-            with c2:
-                if st.button("＋追加", key="sg_add_theme",
-                             disabled=not custom_theme.strip() or len(selected) >= 3):
-                    new_t = custom_theme.strip()
-                    # テーマリストに追加（未登録の場合のみ）
-                    if new_t not in st.session_state.sg_themes:
-                        st.session_state.sg_themes.append(new_t)
-                    # 選択済みに追加（数字なしで保持）
-                    current_sel = list(st.session_state.sg_selected_themes or [])
-                    if new_t not in current_sel:
-                        current_sel.append(new_t)
-                    st.session_state.sg_selected_themes = current_sel
-                    st.rerun()
-            if len(selected) >= 3:
-                st.caption("（3個選択済みのため追加できません）")
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_back, col_regen, col_next = st.columns([1, 1, 2])
