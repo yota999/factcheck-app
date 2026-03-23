@@ -320,15 +320,25 @@ if st.session_state.fc_done and st.session_state.fc_results:
                         unsafe_allow_html=True,
                     )
                     components.html(f"""
-                    <button onclick="
-                        var t={json.dumps(corrected_text)};
-                        navigator.clipboard.writeText(t).then(function(){{
-                            var b=document.getElementById('cpybtn');
-                            b.innerText='✅ コピーしました！';
-                            b.style.background='#059669';
-                            setTimeout(function(){{b.innerText='📋 コピー';b.style.background='#1D4ED8';}},2000);
-                        }});
-                    " id="cpybtn" style="background:#1D4ED8;color:white;border:none;border-radius:8px;
+                    <script>
+                    function doCopy(btnId, text) {{
+                        var ta = document.createElement('textarea');
+                        ta.value = text;
+                        ta.style.position = 'fixed';
+                        ta.style.opacity = '0';
+                        document.body.appendChild(ta);
+                        ta.focus();
+                        ta.select();
+                        try {{ document.execCommand('copy'); }} catch(e) {{}}
+                        document.body.removeChild(ta);
+                        var b = document.getElementById(btnId);
+                        b.innerText = '✅ コピーしました！';
+                        b.style.background = '#059669';
+                        setTimeout(function(){{ b.innerText = '📋 コピー'; b.style.background = '#1D4ED8'; }}, 2000);
+                    }}
+                    </script>
+                    <button id="cpybtn" onclick="doCopy('cpybtn', {json.dumps(corrected_text)})"
+                    style="background:#1D4ED8;color:white;border:none;border-radius:8px;
                     padding:10px 20px;font-size:0.88rem;cursor:pointer;width:100%;
                     font-family:sans-serif;font-weight:600;margin-top:6px;">📋 コピー</button>
                     """, height=52)
@@ -397,15 +407,25 @@ if st.session_state.fc_done and st.session_state.fc_results:
                             unsafe_allow_html=True,
                         )
                         components.html(f"""
-                        <button onclick="
-                            var t={json.dumps(revised_text)};
-                            navigator.clipboard.writeText(t).then(function(){{
-                                var b=document.getElementById('cpybtn2');
-                                b.innerText='✅ コピーしました！';
-                                b.style.background='#059669';
-                                setTimeout(function(){{b.innerText='📋 コピー';b.style.background='#1D4ED8';}},2000);
-                            }});
-                        " id="cpybtn2" style="background:#1D4ED8;color:white;border:none;border-radius:8px;
+                        <script>
+                        function doCopy2(btnId, text) {{
+                            var ta = document.createElement('textarea');
+                            ta.value = text;
+                            ta.style.position = 'fixed';
+                            ta.style.opacity = '0';
+                            document.body.appendChild(ta);
+                            ta.focus();
+                            ta.select();
+                            try {{ document.execCommand('copy'); }} catch(e) {{}}
+                            document.body.removeChild(ta);
+                            var b = document.getElementById(btnId);
+                            b.innerText = '✅ コピーしました！';
+                            b.style.background = '#059669';
+                            setTimeout(function(){{ b.innerText = '📋 コピー'; b.style.background = '#1D4ED8'; }}, 2000);
+                        }}
+                        </script>
+                        <button id="cpybtn2" onclick="doCopy2('cpybtn2', {json.dumps(revised_text)})"
+                        style="background:#1D4ED8;color:white;border:none;border-radius:8px;
                         padding:10px 20px;font-size:0.88rem;cursor:pointer;width:100%;
                         font-family:sans-serif;font-weight:600;margin-top:6px;">📋 コピー</button>
                         """, height=52)
