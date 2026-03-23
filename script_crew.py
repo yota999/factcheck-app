@@ -281,15 +281,24 @@ def generate_themes(
 実際のテーマを1行で出力してください（「テーマタイトル」「ポイント1」などのプレースホルダーはそのまま書かないこと）"""
 
         resp = _call_llm(prompt, model=model, temperature=0.9, max_tokens=200)
-        # 番号付きの行があれば番号を除去、プレースホルダーをスキップ
         for line in resp.split("\n"):
             line = line.strip()
             if not line:
                 continue
+            # 番号付き行の番号を除去
             if len(line) > 2 and line[0].isdigit() and ". " in line:
                 line = line.split(". ", 1)[1].strip()
-            # 「テーマタイトル」がそのまま出た行はスキップ
-            if line.startswith("テーマタイトル") or line.startswith("例："):
+            # 例示行はスキップ
+            if line.startswith("例："):
+                continue
+            # 「テーマタイトル｜...」→ プレフィックスだけ除去して内容を使う
+            if line.startswith("テーマタイトル｜"):
+                line = line[len("テーマタイトル｜"):].strip()
+                if line and len(line) > 10:
+                    return line
+                continue
+            # 「テーマタイトル」単体行はスキップ
+            if line.startswith("テーマタイトル"):
                 continue
             if "｜" in line or len(line) > 10:
                 return line
