@@ -85,6 +85,7 @@ _DEFAULTS = {
     "fc_correction": {},
     "fc_running": False,
     "fc_done": False,
+    "fc_variants": [],
 }
 for k, v in _DEFAULTS.items():
     if k not in st.session_state:
@@ -157,6 +158,7 @@ if run_btn and input_text and input_text.strip():
     st.session_state.fc_results = []
     st.session_state.fc_correction = {}
     st.session_state.fc_done = False
+    st.session_state.fc_variants = []
 
     result_holder = {}
 
@@ -387,10 +389,62 @@ if st.session_state.fc_done and st.session_state.fc_results:
                             st.session_state[k] = _DEFAULTS[k]
                         st.rerun()
 
+    # ─── バリアント生成 ────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 🎨 異なる角度で3バリアントを生成")
+    st.caption("ファクトチェック済みの事実・数字を維持しながら、切り口を変えた台本を3つ並列生成します")
+
+    # ベーステキスト（修正版があればそちらを優先）
+    base_for_variant = (
+        st.session_state.fc_correction.get("corrected", "")
+        or st.session_state.fc_input
+    )
+    if st.session_state.fc_correction.get("corrected"):
+        st.info("💡 修正版台本をベースにバリアントを生成します")
+
+    if not st.session_state.fc_variants:
+        col_v_l, col_v_c, col_v_r = st.columns([1, 2, 1])
+        with col_v_c:
+            if st.button("✨ 3つのバリアントを生成する", type="primary", use_container_width=True):
+                with st.spinner("3つの角度で台本を並列生成中... （30秒〜1分）"):
+                    try:
+                        from script_crew import generate_fc_variants
+                        variants = generate_fc_variants(
+                            base_script=base_for_variant,
+                            n=3,
+                            model="anthropic/claude-sonnet-4-6",
+                        )
+                        st.session_state.fc_variants = variants
+                    except Exception as e:
+                        st.error(f"生成エラー: {e}")
+                st.rerun()
+    else:
+        variants = st.session_state.fc_variants
+        tab_labels = [f"✏️ {v['angle_name']}" for v in variants]
+        tabs = st.tabs(tab_labels)
+        for tab, v in zip(tabs, variants):
+            with tab:
+                if v.get("error"):
+                    st.error(f"生成エラー: {v['error']}")
+                elif v.get("text"):
+                    char_v = len(v["text"])
+                    st.caption(f"{char_v}文字")
+                    st.text_area(
+                        "台本（コピー用）",
+                        value=v["text"],
+                        height=300,
+                        key=f"variant_{v['angle_key']}",
+                    )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 バリアントを再生成する", use_container_width=True):
+            st.session_state.fc_variants = []
+            st.rerun()
+
     # ─── 最初からやり直す ─────────────────────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("↩️ 最初からやり直す", type="secondary"):
-        for k in ["fc_input","fc_results","fc_correction","fc_done"]:
+        for k in ["fc_input","fc_results","fc_correction","fc_done","fc_variants"]:
             st.session_state[k] = _DEFAULTS[k]
         st.rerun()
 

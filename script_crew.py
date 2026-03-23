@@ -674,6 +674,56 @@ def auto_correct_script(original: str, fc_results: list, model: str = "anthropic
         return {"corrected": "", "changes": "", "error": str(e)}
 
 
+# ── FC後バリアント生成 ────────────────────────────────────────────────
+
+_FC_VARIANT_ANGLES = [
+    ("emotion",    "感情・共感型",         "読者の深い悩みや感情に寄り添い、感動・共鳴で心を動かす。感情語を多用し「わかる」「そうだよね」の共感を積み重ねる"),
+    ("story",      "体験談・ストーリー型", "実際の体験談・成功例・失敗談を軸に、ドラマティックなストーリーで引き込む。具体的な人物・場面描写を重視する"),
+    ("debate",     "常識論破・逆説型",     "視聴者が「え？」と驚く逆説・意外な事実・常識破りの切り口から入る。冒頭で強烈な問いや否定から始める"),
+    ("action",     "今すぐ行動型",         "今やらないと損・後悔するという緊急性と即効性を全面に押し出す。行動を促すCTAを随所に盛り込む"),
+    ("psychology", "心理・行動経済学型",   "損失回避・社会的証明・希少性など人間心理の法則を活用。「なぜ人はこうしてしまうのか」という心理的視点から解説する"),
+]
+
+
+def generate_fc_variants(
+    base_script: str,
+    n: int = 3,
+    model: str = "anthropic/claude-sonnet-4-6",
+) -> list:
+    """ファクトチェック済み台本を元に、異なる角度で3バリアントを並列生成する"""
+    import concurrent.futures
+    import random
+
+    angles = random.sample(_FC_VARIANT_ANGLES, min(n, len(_FC_VARIANT_ANGLES)))
+    char_count = len(base_script)
+
+    def _gen_one(angle_key, angle_name, angle_desc):
+        prompt = f"""以下の【ベース台本】を元に、【切り口】の方向で書き直した新しい台本を生成してください。
+
+【ベース台本】
+{base_script}
+
+【切り口】{angle_name}
+{angle_desc}
+
+【ルール】
+- ベース台本に含まれる事実・数字はそのまま維持する（ファクトチェック済みのため変更禁止）
+- 構成・表現・アプローチを【切り口】に合わせて大きく変える
+- 文字数はベース台本（約{char_count}文字）と同程度を目安にする
+- 台本本文のみ出力（説明・前置き不要）"""
+        try:
+            text = _call_llm(prompt, model=model, temperature=0.85, max_tokens=4000)
+            return {"angle_key": angle_key, "angle_name": angle_name, "text": text, "error": None}
+        except Exception as e:
+            return {"angle_key": angle_key, "angle_name": angle_name, "text": "", "error": str(e)}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n) as ex:
+        futures = [ex.submit(_gen_one, ak, an, ad) for ak, an, ad in angles]
+        results = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+    return results
+
+
 # ── 部分ブラッシュアップ ──────────────────────────────────────────────
 
 def generate_brushup_candidates(
