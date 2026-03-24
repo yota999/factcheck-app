@@ -2,6 +2,7 @@ import os
 import time
 import threading
 import json
+import base64
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -70,6 +71,44 @@ html, body, [class*="css"] { font-family: 'Noto Sans JP', sans-serif; }
 }
 </style>
 """, unsafe_allow_html=True)
+
+# ─── コピーボタン生成ヘルパー ──────────────────────────────────────────
+def copy_button(text: str, btn_id: str = "copybtn") -> None:
+    """テキストをクリップボードにコピーするボタンを表示する。
+    base64エンコードでテキストを渡すことで、</script>等の特殊文字による
+    JSパース破壊を完全回避する。フィードバックはボタン自体の色/文字変更で表示。
+    """
+    b64 = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    components.html(f"""
+<button id="{btn_id}"
+  style="background:#1D4ED8;color:white;border:none;border-radius:8px;
+  padding:10px 20px;font-size:0.88rem;cursor:pointer;width:100%;
+  font-family:sans-serif;font-weight:600;">📋 コピー</button>
+<script>
+(function() {{
+  var b64 = "{b64}";
+  var bytes = Uint8Array.from(atob(b64), function(c) {{ return c.charCodeAt(0); }});
+  var text = new TextDecoder("utf-8").decode(bytes);
+  var btn = document.getElementById("{btn_id}");
+  btn.addEventListener("click", function() {{
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;opacity:0;top:0;left:0;";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try {{ document.execCommand("copy"); }} catch(e) {{}}
+    document.body.removeChild(ta);
+    btn.textContent = "✅ コピーしました！";
+    btn.style.background = "#16A34A";
+    setTimeout(function() {{
+      btn.textContent = "📋 コピー";
+      btn.style.background = "#1D4ED8";
+    }}, 2500);
+  }});
+}})();
+</script>
+""", height=55)
 
 # ─── ヘッダー ──────────────────────────────────────────────────────────
 st.markdown("""
@@ -319,31 +358,7 @@ if st.session_state.fc_done and st.session_state.fc_results:
                         f'<div class="diff-corrected">{corrected_text}</div>',
                         unsafe_allow_html=True,
                     )
-                    components.html(f"""
-                    <script>
-                    function doCopy(text) {{
-                        var ta = document.createElement('textarea');
-                        ta.value = text;
-                        ta.style.position = 'fixed';
-                        ta.style.opacity = '0';
-                        document.body.appendChild(ta);
-                        ta.focus();
-                        ta.select();
-                        try {{ document.execCommand('copy'); }} catch(e) {{}}
-                        document.body.removeChild(ta);
-                        var msg = document.getElementById('copymsg');
-                        msg.style.display = 'block';
-                        setTimeout(function(){{ msg.style.display = 'none'; }}, 2500);
-                    }}
-                    </script>
-                    <button onclick="doCopy({json.dumps(corrected_text)})"
-                    style="background:#1D4ED8;color:white;border:none;border-radius:8px;
-                    padding:10px 20px;font-size:0.88rem;cursor:pointer;width:100%;
-                    font-family:sans-serif;font-weight:600;">📋 コピー</button>
-                    <div id="copymsg" style="display:none;margin-top:8px;padding:8px 12px;
-                    background:#DCFCE7;color:#166534;border-radius:6px;font-size:0.85rem;
-                    font-weight:600;text-align:center;">✅ クリップボードにコピーしました！</div>
-                    """, height=90)
+                    copy_button(corrected_text, "copybtn1")
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -408,31 +423,7 @@ if st.session_state.fc_done and st.session_state.fc_results:
                             f'<div class="diff-corrected">{revised_text}</div>',
                             unsafe_allow_html=True,
                         )
-                        components.html(f"""
-                        <script>
-                        function doCopy2(text) {{
-                            var ta = document.createElement('textarea');
-                            ta.value = text;
-                            ta.style.position = 'fixed';
-                            ta.style.opacity = '0';
-                            document.body.appendChild(ta);
-                            ta.focus();
-                            ta.select();
-                            try {{ document.execCommand('copy'); }} catch(e) {{}}
-                            document.body.removeChild(ta);
-                            var msg = document.getElementById('copymsg2');
-                            msg.style.display = 'block';
-                            setTimeout(function(){{ msg.style.display = 'none'; }}, 2500);
-                        }}
-                        </script>
-                        <button onclick="doCopy2({json.dumps(revised_text)})"
-                        style="background:#1D4ED8;color:white;border:none;border-radius:8px;
-                        padding:10px 20px;font-size:0.88rem;cursor:pointer;width:100%;
-                        font-family:sans-serif;font-weight:600;">📋 コピー</button>
-                        <div id="copymsg2" style="display:none;margin-top:8px;padding:8px 12px;
-                        background:#DCFCE7;color:#166534;border-radius:6px;font-size:0.85rem;
-                        font-weight:600;text-align:center;">✅ クリップボードにコピーしました！</div>
-                        """, height=90)
+                        copy_button(revised_text, "copybtn2")
                         revision_changes = revision.get("changes", "")
                         if revision_changes:
                             st.markdown("**変更箇所**")
