@@ -1146,96 +1146,169 @@ elif step == 2:
     if not ideas:
         st.error("アイデア生成に失敗しました。戻って再試行してください。")
     else:
-        # ── チェックボックス方式でアイデアを表示（全文表示・縞模様・3個まで選択） ──
-        current_plain = set(st.session_state.sg_selected_ideas or [])
-        new_plain = set()
+        selected_plain_i = st.session_state.sg_selected_ideas or []
+        n_sel_i = len(selected_plain_i)
 
-        n_checked = sum(1 for idea in display_ideas if _strip_num(idea) in current_plain)
-        # カスタム追加分も含めてカウント
-        custom_checked = sum(1 for x in current_plain if x not in [_strip_num(d) for d in display_ideas])
-        total_checked = n_checked + custom_checked
-
-        st.markdown(
-            f'<div style="font-size:0.88rem;color:#6B7280;margin-bottom:10px;">'
-            f'アイデアを最大3個選択してください ― <b style="color:{"#4F46E5" if total_checked>0 else "#6B7280"}">{total_checked}/3 選択中</b></div>',
-            unsafe_allow_html=True,
-        )
-
-        for i, idea in enumerate(display_ideas):
-            plain = _strip_num(idea)
-            is_checked = plain in current_plain
-            max_reached = total_checked >= 3 and not is_checked
-            bg = "#F5F3FF"  # 全て薄い紫で統一
-            border = "#C4B5FD" if is_checked else "#E5E7EB"
+        # ── 選択ステータスバー ────────────────────────────────────
+        if selected_plain_i:
+            chips_html_i = "".join([
+                f'<div style="display:inline-flex;align-items:center;gap:6px;'
+                f'background:linear-gradient(135deg,#059669,#10B981);border-radius:24px;'
+                f'padding:6px 16px;margin:3px 6px 3px 0;box-shadow:0 2px 8px rgba(5,150,105,.25);">'
+                f'<span style="font-size:0.82rem;color:white;font-weight:600;">{t.split("｜")[0][:25]}</span>'
+                f'</div>'
+                for t in selected_plain_i
+            ])
             st.markdown(
-                f'<div style="background:{bg};border:1.5px solid {border};border-radius:8px;'
-                f'padding:10px 14px;margin-bottom:6px;line-height:1.65;">',
+                f'<div style="background:white;border:1px solid #E5E7EB;border-radius:14px;'
+                f'padding:12px 18px;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,.04);">'
+                f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
+                f'<span style="font-size:0.78rem;color:#6B7280;font-weight:600;text-transform:uppercase;'
+                f'letter-spacing:.06em;">選択中のアイデア</span>'
+                f'<span style="background:#ECFDF5;color:#059669;font-weight:700;font-size:0.82rem;'
+                f'padding:3px 12px;border-radius:20px;">{n_sel_i}/3</span></div>'
+                f'<div style="line-height:2.2;">{chips_html_i}</div></div>',
                 unsafe_allow_html=True,
             )
-            checked = st.checkbox(
-                idea,
-                value=is_checked,
-                key=f"idea_chk_{i}",
-                disabled=max_reached,
+        else:
+            st.markdown(
+                '<div style="background:linear-gradient(135deg,#ECFDF5,#F0FDF4);border:1px solid #6EE7B7;'
+                'border-radius:14px;padding:14px 18px;margin-bottom:18px;">'
+                '<div style="font-weight:600;color:#065F46;font-size:0.88rem;">'
+                '👇 カードをタップしてアイデアを選択してください（最大3個）</div></div>',
+                unsafe_allow_html=True,
             )
-            st.markdown("</div>", unsafe_allow_html=True)
-            if checked:
-                new_plain.add(plain)
 
-        # カスタム追加分を保持
-        for x in current_plain:
-            if x not in [_strip_num(d) for d in display_ideas]:
-                new_plain.add(x)
+        # ── アイデアカードグリッド（常に表示）────────────────────────
+        COLS_I = 2
+        for row_start_i in range(0, len(ideas), COLS_I):
+            row_ideas = ideas[row_start_i:row_start_i + COLS_I]
+            cols_gi = st.columns(COLS_I)
+            for ci_i, (col_gi, idea_raw) in enumerate(zip(cols_gi, row_ideas)):
+                idx_i = row_start_i + ci_i
+                plain_i = _strip_num(idea_raw)
+                is_sel_i = plain_i in selected_plain_i
+                num_label_i = CIRCLE_NUMS[idx_i] if idx_i < len(CIRCLE_NUMS) else str(idx_i + 1)
 
-        if new_plain != current_plain:
-            st.session_state.sg_selected_ideas = list(new_plain)
-            st.rerun()
+                # タイトルと補足に分割
+                if '｜' in plain_i:
+                    title_i, sub_i = plain_i.split('｜', 1)
+                    title_i = title_i.strip(); sub_i = sub_i.strip()
+                else:
+                    title_i = plain_i; sub_i = ""
 
-        # selected_ideas は後続コードとの互換用
-        selected_ideas = [d for d in display_ideas if _strip_num(d) in new_plain]
-        # カスタム追加分も含める
-        for x in new_plain:
-            if x not in [_strip_num(d) for d in display_ideas]:
-                selected_ideas.append(x)
+                with col_gi:
+                    if is_sel_i:
+                        card_bg_i = "linear-gradient(135deg,#D1FAE5 0%,#A7F3D0 100%)"
+                        card_bdr_i = "2px solid #059669"
+                        card_shadow_i = "0 4px 16px rgba(5,150,105,.25)"
+                        num_bg_i = "#059669"; num_color_i = "white"
+                        title_color_i = "#064E3B"
+                        sub_color_i = "#065F46"
+                        bullet_bg_i = "#6EE7B7"
+                        badge_i = ('<div style="position:absolute;top:10px;right:12px;background:#059669;'
+                                   'color:white;border-radius:20px;padding:2px 10px;font-size:0.72rem;'
+                                   'font-weight:700;box-shadow:0 2px 6px rgba(5,150,105,.3);">✓ 選択中</div>')
+                    else:
+                        card_bg_i = "linear-gradient(135deg,#FAFFFE 0%,#F0FDF4 100%)"
+                        card_bdr_i = "1px solid #D1FAE5"
+                        card_shadow_i = "0 2px 8px rgba(5,150,105,.06)"
+                        num_bg_i = "#10B981"; num_color_i = "white"
+                        title_color_i = "#1A2E1E"
+                        sub_color_i = "#374151"
+                        bullet_bg_i = "#D1FAE5"
+                        badge_i = ""
 
-        total_checked = len(new_plain)
+                    # 補足テキストを「／」で分割して箇条書き化
+                    if sub_i:
+                        points_i = [p.strip() for p in sub_i.replace('/', '／').split('／') if p.strip()]
+                        bullets_html_i = "".join(
+                            f'<div style="display:flex;align-items:flex-start;gap:6px;margin-top:5px;">'
+                            f'<span style="background:{bullet_bg_i};color:{sub_color_i};border-radius:4px;'
+                            f'padding:1px 6px;font-size:0.68rem;font-weight:600;flex-shrink:0;">▸</span>'
+                            f'<span style="font-size:0.78rem;color:{sub_color_i};line-height:1.5;">{pt_i}</span>'
+                            f'</div>'
+                            for pt_i in points_i
+                        )
+                        sub_html_i = f'<div style="margin-top:10px;">{bullets_html_i}</div>'
+                    else:
+                        sub_html_i = ""
 
-        with st.expander("🚫 気に入らないアイデアをNG登録する（次回から非表示に）"):
-            ng_options = [idea for idea in display_ideas if _strip_num(idea) not in new_plain]
-            ng_sel_keys = [f"ng_idea_{i}" for i, idea in enumerate(display_ideas)
-                           if _strip_num(idea) not in new_plain]
-            ng_checked = []
-            for idea in ng_options:
-                plain = _strip_num(idea)
-                if st.checkbox(f"🚫 {idea}", key=f"ng_idea_chk_{plain[:20]}", value=False):
-                    ng_checked.append(plain)
-            if st.button("🚫 NG登録する", key="sg_ng_idea_btn", disabled=not ng_checked):
-                try:
-                    from memory_manager import add_rejected_ideas
-                    add_rejected_ideas(ng_checked, st.session_state.sg_script_type)
-                    st.success(f"{len(ng_checked)}件をNG登録しました")
-                except Exception as e:
-                    st.error(f"保存エラー: {e}")
+                    st.markdown(
+                        f'<div style="position:relative;background:{card_bg_i};border:{card_bdr_i};'
+                        f'border-radius:16px;padding:18px 20px;min-height:100px;margin-bottom:6px;'
+                        f'box-shadow:{card_shadow_i};transition:all .15s ease;">'
+                        f'{badge_i}'
+                        f'<div style="display:flex;align-items:flex-start;gap:10px;">'
+                        f'<div style="background:{num_bg_i};color:{num_color_i};border-radius:50%;'
+                        f'width:28px;height:28px;display:flex;align-items:center;justify-content:center;'
+                        f'font-size:0.78rem;font-weight:700;flex-shrink:0;">{num_label_i}</div>'
+                        f'<div style="flex:1;min-width:0;">'
+                        f'<div style="font-weight:700;font-size:0.88rem;color:{title_color_i};'
+                        f'line-height:1.45;">{title_i}</div>'
+                        f'{sub_html_i}'
+                        f'</div></div></div>',
+                        unsafe_allow_html=True,
+                    )
 
-        with st.expander("✏️ リストにないアイデアを直接入力して追加"):
-            c1, c2 = st.columns([4, 1])
-            with c1:
-                custom_idea = st.text_input("カスタムアイデア",
-                    placeholder="例：夫に言われた一言で決意した体験談",
-                    label_visibility="collapsed", key="sg_custom_idea_input")
-            with c2:
-                add_disabled = not custom_idea.strip() or total_checked >= 3
-                if st.button("＋追加", key="sg_add_idea", disabled=add_disabled):
-                    new_idea = custom_idea.strip()
-                    if new_idea not in st.session_state.sg_ideas:
-                        st.session_state.sg_ideas.append(new_idea)
-                    current_sel = list(st.session_state.sg_selected_ideas or [])
-                    if new_idea not in current_sel:
-                        current_sel.append(new_idea)
-                    st.session_state.sg_selected_ideas = current_sel
-                    st.rerun()
-            if total_checked >= 3:
-                st.caption("（3個選択済みのため追加できません）")
+                    # ── ボタン行：選択 / NG ──
+                    is_full_i = (not is_sel_i and n_sel_i >= 3)
+                    bc1_i, bc2_i = st.columns([3, 1])
+                    with bc1_i:
+                        btn_lbl_i = "✓ 選択中（解除）" if is_sel_i else "＋ 選択する"
+                        btn_type_i = "primary" if is_sel_i else "secondary"
+                        if st.button(btn_lbl_i, key=f"sg_ic_{idx_i}",
+                                     disabled=is_full_i, use_container_width=True, type=btn_type_i):
+                            if is_sel_i:
+                                st.session_state.sg_selected_ideas = [t for t in selected_plain_i if t != plain_i]
+                            else:
+                                st.session_state.sg_selected_ideas = selected_plain_i + [plain_i]
+                            st.rerun()
+                    with bc2_i:
+                        if st.button("🚫", key=f"sg_ng_i_{idx_i}", help="このアイデアをNG登録",
+                                     use_container_width=True):
+                            try:
+                                from memory_manager import add_rejected_ideas
+                                add_rejected_ideas([plain_i], st.session_state.sg_script_type)
+                                st.session_state.sg_ideas = [t for t in st.session_state.sg_ideas
+                                                             if _strip_num(t) != plain_i]
+                                st.session_state.sg_selected_ideas = [t for t in selected_plain_i if t != plain_i]
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"NG登録エラー: {e}")
+
+        # ── カスタムアイデア追加 ──
+        st.markdown(
+            '<div style="background:white;border:1px dashed #6EE7B7;border-radius:14px;'
+            'padding:14px 18px;margin-top:10px;">'
+            '<div style="font-size:0.82rem;color:#059669;font-weight:600;margin-bottom:8px;">'
+            '✏️ リストにないアイデアを追加</div></div>',
+            unsafe_allow_html=True,
+        )
+        c1_i, c2_i = st.columns([5, 1])
+        with c1_i:
+            custom_idea = st.text_input("カスタムアイデア",
+                placeholder="例：夫に言われた一言で決意した体験談",
+                label_visibility="collapsed", key="sg_custom_idea_input")
+        with c2_i:
+            if st.button("＋追加", key="sg_add_idea",
+                         disabled=not custom_idea.strip() or n_sel_i >= 3,
+                         use_container_width=True):
+                new_idea = custom_idea.strip()
+                if new_idea not in st.session_state.sg_ideas:
+                    st.session_state.sg_ideas.append(new_idea)
+                current_sel_i = list(st.session_state.sg_selected_ideas or [])
+                if new_idea not in current_sel_i:
+                    current_sel_i.append(new_idea)
+                st.session_state.sg_selected_ideas = current_sel_i
+                st.rerun()
+        if n_sel_i >= 3:
+            st.caption("（3個選択済みのため追加できません）")
+
+        # selected_ideas / total_checked は後続コードとの互換用
+        selected_ideas = list(selected_plain_i)
+        total_checked = n_sel_i
+        new_plain = set(selected_plain_i)
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_back, col_regen, col_next = st.columns([1, 1, 2])
