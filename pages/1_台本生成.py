@@ -603,6 +603,9 @@ def _init():
         "sg_brushup_generating": False,
         # テーマピッカー開閉フラグ
         "sg_theme_picker_open": False,
+        # マルチエージェント議論
+        "sg_theme_debate": [],
+        "sg_idea_debate": [],
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -1040,6 +1043,55 @@ elif step == 1:
         # ── 後続ロジック用 ──
         selected = st.session_state.sg_selected_themes or []
 
+        # ── マルチエージェント議論 ──────────────────────────────────
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(
+            '<div style="background:linear-gradient(135deg,#F0F0FF,#E8F8F0,#FFF8E8);'
+            'border-radius:14px;padding:14px 18px;margin-bottom:12px;">'
+            '<div style="font-size:0.88rem;font-weight:700;color:#374151;margin-bottom:4px;">'
+            '🤖 AIたちにこのテーマリストを評価してもらう</div>'
+            '<div style="font-size:0.78rem;color:#6B7280;">Claude・ChatGPT・Grokが議論して改善点を指摘します</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        col_debate_btn, col_debate_clear = st.columns([2, 1])
+        with col_debate_btn:
+            if st.button("🎙️ AIに評価してもらう", key="sg_theme_debate_btn", use_container_width=True):
+                with st.spinner("Claude・ChatGPT・Grokが議論中...（30秒ほどかかります）"):
+                    try:
+                        from script_crew import multi_agent_review
+                        debate = multi_agent_review(
+                            st.session_state.sg_themes,
+                            "テーマ",
+                            st.session_state.sg_script_type,
+                        )
+                        st.session_state["sg_theme_debate"] = debate
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"議論エラー: {e}")
+        with col_debate_clear:
+            if st.session_state.get("sg_theme_debate") and st.button("✕ 閉じる", key="sg_theme_debate_close"):
+                st.session_state["sg_theme_debate"] = []
+                st.rerun()
+
+        debate_results_t = st.session_state.get("sg_theme_debate", [])
+        if debate_results_t:
+            st.markdown(
+                '<div style="font-size:0.82rem;font-weight:700;color:#374151;margin:10px 0 8px;">💬 AIたちの意見</div>',
+                unsafe_allow_html=True,
+            )
+            for dr in debate_results_t:
+                comment_html = dr["comment"].replace("\n", "<br>")
+                st.markdown(
+                    f'<div style="background:{dr["bg"]};border-left:4px solid {dr["color"]};'
+                    f'border-radius:0 12px 12px 0;padding:12px 16px;margin-bottom:10px;">'
+                    f'<div style="font-size:0.8rem;font-weight:700;color:{dr["color"]};margin-bottom:6px;">'
+                    f'{dr["icon"]} {dr["ai"]}</div>'
+                    f'<div style="font-size:0.83rem;color:#374151;line-height:1.65;">{comment_html}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
         st.markdown("<br>", unsafe_allow_html=True)
         col_back, col_regen, col_next = st.columns([1, 1, 2])
         with col_back:
@@ -1310,6 +1362,55 @@ elif step == 2:
         total_checked = n_sel_i
         new_plain = set(selected_plain_i)
 
+        # ── マルチエージェント議論（アイデア） ──────────────────────
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(
+            '<div style="background:linear-gradient(135deg,#F0F0FF,#E8F8F0,#FFF8E8);'
+            'border-radius:14px;padding:14px 18px;margin-bottom:12px;">'
+            '<div style="font-size:0.88rem;font-weight:700;color:#374151;margin-bottom:4px;">'
+            '🤖 AIたちにこのアイデアリストを評価してもらう</div>'
+            '<div style="font-size:0.78rem;color:#6B7280;">Claude・ChatGPT・Grokが議論して改善点を指摘します</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        col_idea_debate_btn, col_idea_debate_clear = st.columns([2, 1])
+        with col_idea_debate_btn:
+            if st.button("🎙️ AIに評価してもらう", key="sg_idea_debate_btn", use_container_width=True):
+                with st.spinner("Claude・ChatGPT・Grokが議論中...（30秒ほどかかります）"):
+                    try:
+                        from script_crew import multi_agent_review
+                        debate_i = multi_agent_review(
+                            st.session_state.sg_ideas,
+                            "アイデア",
+                            st.session_state.sg_script_type,
+                        )
+                        st.session_state["sg_idea_debate"] = debate_i
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"議論エラー: {e}")
+        with col_idea_debate_clear:
+            if st.session_state.get("sg_idea_debate") and st.button("✕ 閉じる", key="sg_idea_debate_close"):
+                st.session_state["sg_idea_debate"] = []
+                st.rerun()
+
+        debate_results_i = st.session_state.get("sg_idea_debate", [])
+        if debate_results_i:
+            st.markdown(
+                '<div style="font-size:0.82rem;font-weight:700;color:#374151;margin:10px 0 8px;">💬 AIたちの意見</div>',
+                unsafe_allow_html=True,
+            )
+            for dr_i in debate_results_i:
+                comment_html_i = dr_i["comment"].replace("\n", "<br>")
+                st.markdown(
+                    f'<div style="background:{dr_i["bg"]};border-left:4px solid {dr_i["color"]};'
+                    f'border-radius:0 12px 12px 0;padding:12px 16px;margin-bottom:10px;">'
+                    f'<div style="font-size:0.8rem;font-weight:700;color:{dr_i["color"]};margin-bottom:6px;">'
+                    f'{dr_i["icon"]} {dr_i["ai"]}</div>'
+                    f'<div style="font-size:0.83rem;color:#374151;line-height:1.65;">{comment_html_i}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
         st.markdown("<br>", unsafe_allow_html=True)
         col_back, col_regen, col_next = st.columns([1, 1, 2])
         with col_back:
@@ -1483,6 +1584,14 @@ elif step == 3:
         row1_variants = variants[:5]
         row2_variants = variants[5:] if len(variants) > 5 else []
 
+        def _extract_hook(draft: str) -> str:
+            """台本の冒頭フックを80字以内で抽出する"""
+            for line in draft.split("\n"):
+                line = line.strip()
+                if len(line) >= 15 and not line.startswith("#") and not line.startswith("【"):
+                    return line[:80] + ("…" if len(line) > 80 else "")
+            return draft[:80].strip()
+
         def _render_angle_row(row_variants, offset):
             cols = st.columns(len(row_variants))
             for ci_local, v in enumerate(row_variants):
@@ -1494,15 +1603,20 @@ elif step == 3:
                 card_bg = bg if is_sel else "white"
                 card_border = border if is_sel else "#E5E7EB"
                 shadow = f"0 0 0 3px {border}" if is_sel else "none"
+                hook = _extract_hook(v.get("draft", ""))
                 with cols[ci_local]:
                     st.markdown(
                         f'<div style="background:{card_bg};border:2px solid {card_border};'
-                        f'border-radius:12px;padding:10px 6px;text-align:center;'
-                        f'box-shadow:{shadow};min-height:68px;display:flex;flex-direction:column;'
-                        f'align-items:center;justify-content:center;">'
+                        f'border-radius:12px;padding:10px 8px;'
+                        f'box-shadow:{shadow};min-height:100px;">'
+                        f'<div style="text-align:center;">'
                         f'<div style="font-size:1.3rem;">{icon}</div>'
-                        f'<div style="font-size:0.68rem;font-weight:700;color:{txt_color};'
+                        f'<div style="font-size:0.7rem;font-weight:700;color:{txt_color};'
                         f'margin-top:3px;line-height:1.3;">{v["angle_name"]}</div>'
+                        f'</div>'
+                        f'<div style="font-size:0.67rem;color:#6B7280;margin-top:6px;'
+                        f'line-height:1.5;border-top:1px solid {border};padding-top:6px;">'
+                        f'{hook}</div>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )

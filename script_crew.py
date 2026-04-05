@@ -450,6 +450,59 @@ def generate_ideas(
     return [t for t in results if t][:40]
 
 
+def multi_agent_review(items: list, content_type: str, script_type: str) -> list:
+    """
+    Claude・ChatGPT・Grokの3AIがテーマ/アイデアリストをレビューして改善意見を返す
+    Returns: [{"ai": str, "color": str, "bg": str, "icon": str, "comment": str}]
+    """
+    items_str = "\n".join(
+        f"{i+1}. {t.split('｜')[0]}" for i, t in enumerate(items[:40])
+    )
+    media = "YouTube動画" if script_type == "youtube" else "リール動画（運動・家トレ系）"
+
+    agents = [
+        ("anthropic/claude-sonnet-4-6", "Claude", "#7C3AED", "#F5F3FF", "🟣",
+         "論理的・建設的に。ワンパターンや重複を具体的に指摘して"),
+        ("gpt-4o", "ChatGPT", "#059669", "#F0FDF4", "🟢",
+         "バランスよく・マーケティング視点で。視聴者に刺さるかどうかを重視して"),
+        ("xai/grok-3-mini", "Grok", "#111827", "#F9FAFB", "⚫",
+         "率直・辛口に。遠慮なく「見飽きた」「つまらない」など本音で語って"),
+    ]
+
+    def _review_one(model: str, ai_name: str, tone: str) -> str:
+        prompt = f"""あなたは{ai_name}です。以下の30〜50代女性向け{media}の{content_type}リストを{tone}レビューしてください。
+
+{content_type}リスト:
+{items_str}
+
+【レビュー基準】
+・ワンパターン・似た内容の繰り返しがないか
+・視聴者（35〜50代女性）に本当に刺さるか
+・もっと良くなる改善点
+
+150〜200字で、口語体・キャラクターを出して話してください。
+改善提案は「例：〇〇→〇〇」の形で1〜2個含めてください。"""
+        return _call_llm(prompt, model=model, temperature=0.88, max_tokens=400)
+
+    import concurrent.futures as _cf
+    results_map: dict = {}
+    with _cf.ThreadPoolExecutor(max_workers=3) as ex:
+        future_map = {
+            ex.submit(_review_one, m, n, tone): (n, col, bg, icon)
+            for m, n, col, bg, icon, tone in agents
+        }
+        for fut in _cf.as_completed(future_map):
+            n, col, bg, icon = future_map[fut]
+            try:
+                comment = fut.result()
+            except Exception as e:
+                comment = f"（レビューエラー: {str(e)[:60]}）"
+            results_map[n] = {"ai": n, "color": col, "bg": bg, "icon": icon, "comment": comment}
+
+    order = [n for _, n, *_ in agents]
+    return [results_map[n] for n in order if n in results_map]
+
+
 def generate_draft(
     script_type: str,
     selected_themes: list,
