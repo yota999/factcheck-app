@@ -1048,73 +1048,112 @@ elif step == 1:
         # ── 後続ロジック用 ──
         selected = st.session_state.sg_selected_themes or []
 
-        # ── マルチエージェント議論 ──────────────────────────────────
+        # ── マルチエージェント議論（自動スタート） ────────────────────
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown(
-            '<div style="background:linear-gradient(135deg,#F0F0FF,#E8F8F0,#FFF8E8);'
-            'border-radius:14px;padding:14px 18px;margin-bottom:12px;">'
-            '<div style="font-size:0.88rem;font-weight:700;color:#374151;margin-bottom:4px;">'
-            '🤖 AIたちにこのテーマリストを議論してもらう</div>'
-            '<div style="font-size:0.78rem;color:#6B7280;">Claude → ChatGPT → Gemini → Grok の順で順番に発言します（約40秒）</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-        col_debate_btn, col_debate_clear = st.columns([2, 1])
-        with col_debate_btn:
-            if st.button("🎙️ AIたちに議論してもらう", key="sg_theme_debate_btn", use_container_width=True):
-                with st.spinner("Claude → ChatGPT → Gemini → Grok の順で議論中..."):
-                    try:
-                        from script_crew import multi_agent_debate
-                        debate = multi_agent_debate(
-                            st.session_state.sg_themes,
-                            "テーマ",
-                            st.session_state.sg_script_type,
-                        )
-                        st.session_state["sg_theme_debate"] = debate
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"議論エラー: {e}")
-        with col_debate_clear:
-            if st.session_state.get("sg_theme_debate") and st.button("✕ 閉じる", key="sg_theme_debate_close"):
-                st.session_state["sg_theme_debate"] = []
-                st.rerun()
-
         debate_results_t = st.session_state.get("sg_theme_debate", [])
+
+        # 議論がまだなければ自動スタート
+        if not debate_results_t and st.session_state.sg_themes:
+            with st.spinner("🤖 AIたちが議論中... Claude → ChatGPT → Gemini → Grok（2ラウンド・約60秒）"):
+                try:
+                    from script_crew import multi_agent_debate
+                    debate_results_t = multi_agent_debate(
+                        st.session_state.sg_themes, "テーマ", st.session_state.sg_script_type,
+                    )
+                    st.session_state["sg_theme_debate"] = debate_results_t
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"議論エラー: {e}")
+
         if debate_results_t:
-            st.markdown(
-                '<div style="background:#1F2937;border-radius:14px;padding:14px 18px;margin:10px 0 6px;">'
-                '<div style="font-size:0.82rem;font-weight:700;color:#F9FAFB;">💬 AIたちの議論</div>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
+            col_debate_hdr, col_debate_close = st.columns([4, 1])
+            with col_debate_hdr:
+                st.markdown(
+                    '<div style="background:#1F2937;border-radius:12px;padding:12px 18px;">'
+                    '<div style="font-size:0.85rem;font-weight:700;color:#F9FAFB;">💬 AIたちの議論（2ラウンド）</div>'
+                    '<div style="font-size:0.74rem;color:#9CA3AF;margin-top:2px;">R1: 問題点の指摘 → R2: 具体的な改善案の提示</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+            with col_debate_close:
+                if st.button("✕ 閉じる", key="sg_theme_debate_close"):
+                    st.session_state["sg_theme_debate"] = []
+                    st.rerun()
+
+            prev_round = 0
             for dr in debate_results_t:
+                r = dr.get("round", 1)
+                if r != prev_round:
+                    label = "🔍 ラウンド1 — 問題点・弱点の指摘" if r == 1 else "💡 ラウンド2 — 具体的な改善案の提示"
+                    bg_r = "#374151" if r == 1 else "#1E3A5F"
+                    st.markdown(
+                        f'<div style="background:{bg_r};border-radius:8px;padding:6px 14px;'
+                        f'margin:12px 0 6px;font-size:0.75rem;font-weight:700;color:#E5E7EB;">{label}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    prev_round = r
                 msg_html = dr["text"].replace("\n", "<br>")
                 if dr["side"] == "left":
                     st.markdown(
-                        f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;">'
+                        f'<div style="display:flex;gap:10px;margin:8px 0;align-items:flex-start;">'
                         f'<div style="width:36px;height:36px;border-radius:50%;background:{dr["bg"]};'
                         f'border:2px solid {dr["color"]};display:flex;align-items:center;'
                         f'justify-content:center;font-size:1rem;flex-shrink:0;">{dr["icon"]}</div>'
                         f'<div style="background:{dr["bg"]};border:1px solid {dr["color"]}33;'
                         f'border-radius:4px 16px 16px 16px;padding:10px 14px;max-width:82%;">'
                         f'<div style="font-size:0.72rem;font-weight:700;color:{dr["color"]};margin-bottom:5px;">{dr["ai"]}</div>'
-                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.65;">{msg_html}</div>'
+                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.7;">{msg_html}</div>'
                         f'</div></div>',
                         unsafe_allow_html=True,
                     )
                 else:
                     st.markdown(
-                        f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;flex-direction:row-reverse;">'
+                        f'<div style="display:flex;gap:10px;margin:8px 0;align-items:flex-start;flex-direction:row-reverse;">'
                         f'<div style="width:36px;height:36px;border-radius:50%;background:{dr["bg"]};'
                         f'border:2px solid {dr["color"]};display:flex;align-items:center;'
                         f'justify-content:center;font-size:1rem;flex-shrink:0;">{dr["icon"]}</div>'
                         f'<div style="background:{dr["bg"]};border:1px solid {dr["color"]}33;'
                         f'border-radius:16px 4px 16px 16px;padding:10px 14px;max-width:82%;">'
                         f'<div style="font-size:0.72rem;font-weight:700;color:{dr["color"]};margin-bottom:5px;text-align:right;">{dr["ai"]}</div>'
-                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.65;">{msg_html}</div>'
+                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.7;">{msg_html}</div>'
                         f'</div></div>',
                         unsafe_allow_html=True,
                     )
+
+            # 議論を反映して再生成ボタン
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🔄 AIの議論を反映して40テーマを再生成", type="primary",
+                         key="sg_theme_regen_from_debate", use_container_width=True):
+                debate_feedback = "\n".join(
+                    f"[{d['ai']} R{d.get('round',1)}] {d['text']}" for d in debate_results_t
+                )
+                try:
+                    from memory_manager import get_used_themes, get_next_angle, get_next_ai, get_rejected_themes
+                    used_themes = get_used_themes(st.session_state.sg_script_type)
+                    rejected_themes = get_rejected_themes(st.session_state.sg_script_type)
+                    angle_key_d, angle_name_d = get_next_angle(st.session_state.sg_script_type)
+                    model_id_d, _ = get_next_ai(st.session_state.sg_script_type)
+                except Exception:
+                    used_themes, rejected_themes = [], []
+                    angle_key_d, angle_name_d = "science", "科学・データ根拠型"
+                    model_id_d = "anthropic/claude-sonnet-4-6"
+                with st.spinner("AIの意見を反映して40テーマを再生成中..."):
+                    try:
+                        from script_crew import fetch_all_trends, generate_themes
+                        trends_d, vt_d, yt_d = fetch_all_trends()
+                        new_themes = generate_themes(
+                            script_type=st.session_state.sg_script_type,
+                            used_themes=used_themes, rejected_themes=rejected_themes,
+                            trends=trends_d, video_trends=vt_d, youtube_trends=yt_d,
+                            angle_name=angle_name_d, model=model_id_d,
+                            debate_feedback=debate_feedback,
+                        )
+                        st.session_state.sg_themes = new_themes
+                        st.session_state.sg_selected_themes = []
+                        st.session_state["sg_theme_debate"] = []
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"再生成エラー: {e}")
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_back, col_regen, col_next = st.columns([1, 1, 2])
@@ -1386,73 +1425,108 @@ elif step == 2:
         total_checked = n_sel_i
         new_plain = set(selected_plain_i)
 
-        # ── マルチエージェント議論（アイデア） ──────────────────────
+        # ── マルチエージェント議論（アイデア・自動スタート） ──────────
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown(
-            '<div style="background:linear-gradient(135deg,#F0F0FF,#E8F8F0,#FFF8E8);'
-            'border-radius:14px;padding:14px 18px;margin-bottom:12px;">'
-            '<div style="font-size:0.88rem;font-weight:700;color:#374151;margin-bottom:4px;">'
-            '🤖 AIたちにこのアイデアリストを議論してもらう</div>'
-            '<div style="font-size:0.78rem;color:#6B7280;">Claude → ChatGPT → Gemini → Grok の順で順番に発言します（約40秒）</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-        col_idea_debate_btn, col_idea_debate_clear = st.columns([2, 1])
-        with col_idea_debate_btn:
-            if st.button("🎙️ AIたちに議論してもらう", key="sg_idea_debate_btn", use_container_width=True):
-                with st.spinner("Claude → ChatGPT → Gemini → Grok の順で議論中..."):
-                    try:
-                        from script_crew import multi_agent_debate
-                        debate_i = multi_agent_debate(
-                            st.session_state.sg_ideas,
-                            "アイデア",
-                            st.session_state.sg_script_type,
-                        )
-                        st.session_state["sg_idea_debate"] = debate_i
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"議論エラー: {e}")
-        with col_idea_debate_clear:
-            if st.session_state.get("sg_idea_debate") and st.button("✕ 閉じる", key="sg_idea_debate_close"):
-                st.session_state["sg_idea_debate"] = []
-                st.rerun()
-
         debate_results_i = st.session_state.get("sg_idea_debate", [])
+
+        if not debate_results_i and st.session_state.sg_ideas:
+            with st.spinner("🤖 AIたちが議論中... Claude → ChatGPT → Gemini → Grok（2ラウンド・約60秒）"):
+                try:
+                    from script_crew import multi_agent_debate
+                    debate_results_i = multi_agent_debate(
+                        st.session_state.sg_ideas, "アイデア", st.session_state.sg_script_type,
+                    )
+                    st.session_state["sg_idea_debate"] = debate_results_i
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"議論エラー: {e}")
+
         if debate_results_i:
-            st.markdown(
-                '<div style="background:#1F2937;border-radius:14px;padding:14px 18px;margin:10px 0 6px;">'
-                '<div style="font-size:0.82rem;font-weight:700;color:#F9FAFB;">💬 AIたちの議論</div>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
+            col_idh, col_idc = st.columns([4, 1])
+            with col_idh:
+                st.markdown(
+                    '<div style="background:#1F2937;border-radius:12px;padding:12px 18px;">'
+                    '<div style="font-size:0.85rem;font-weight:700;color:#F9FAFB;">💬 AIたちの議論（2ラウンド）</div>'
+                    '<div style="font-size:0.74rem;color:#9CA3AF;margin-top:2px;">R1: 問題点の指摘 → R2: 具体的な改善案の提示</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+            with col_idc:
+                if st.button("✕ 閉じる", key="sg_idea_debate_close"):
+                    st.session_state["sg_idea_debate"] = []
+                    st.rerun()
+
+            prev_round_i = 0
             for dr_i in debate_results_i:
+                r_i = dr_i.get("round", 1)
+                if r_i != prev_round_i:
+                    label_i = "🔍 ラウンド1 — 問題点・弱点の指摘" if r_i == 1 else "💡 ラウンド2 — 具体的な改善案の提示"
+                    bg_ri = "#374151" if r_i == 1 else "#1E3A5F"
+                    st.markdown(
+                        f'<div style="background:{bg_ri};border-radius:8px;padding:6px 14px;'
+                        f'margin:12px 0 6px;font-size:0.75rem;font-weight:700;color:#E5E7EB;">{label_i}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    prev_round_i = r_i
                 msg_html_i = dr_i["text"].replace("\n", "<br>")
                 if dr_i["side"] == "left":
                     st.markdown(
-                        f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;">'
+                        f'<div style="display:flex;gap:10px;margin:8px 0;align-items:flex-start;">'
                         f'<div style="width:36px;height:36px;border-radius:50%;background:{dr_i["bg"]};'
                         f'border:2px solid {dr_i["color"]};display:flex;align-items:center;'
                         f'justify-content:center;font-size:1rem;flex-shrink:0;">{dr_i["icon"]}</div>'
                         f'<div style="background:{dr_i["bg"]};border:1px solid {dr_i["color"]}33;'
                         f'border-radius:4px 16px 16px 16px;padding:10px 14px;max-width:82%;">'
                         f'<div style="font-size:0.72rem;font-weight:700;color:{dr_i["color"]};margin-bottom:5px;">{dr_i["ai"]}</div>'
-                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.65;">{msg_html_i}</div>'
+                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.7;">{msg_html_i}</div>'
                         f'</div></div>',
                         unsafe_allow_html=True,
                     )
                 else:
                     st.markdown(
-                        f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;flex-direction:row-reverse;">'
+                        f'<div style="display:flex;gap:10px;margin:8px 0;align-items:flex-start;flex-direction:row-reverse;">'
                         f'<div style="width:36px;height:36px;border-radius:50%;background:{dr_i["bg"]};'
                         f'border:2px solid {dr_i["color"]};display:flex;align-items:center;'
                         f'justify-content:center;font-size:1rem;flex-shrink:0;">{dr_i["icon"]}</div>'
                         f'<div style="background:{dr_i["bg"]};border:1px solid {dr_i["color"]}33;'
                         f'border-radius:16px 4px 16px 16px;padding:10px 14px;max-width:82%;">'
                         f'<div style="font-size:0.72rem;font-weight:700;color:{dr_i["color"]};margin-bottom:5px;text-align:right;">{dr_i["ai"]}</div>'
-                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.65;">{msg_html_i}</div>'
+                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.7;">{msg_html_i}</div>'
                         f'</div></div>',
                         unsafe_allow_html=True,
                     )
+
+            # 議論を反映して再生成ボタン
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🔄 AIの議論を反映して40アイデアを再生成", type="primary",
+                         key="sg_idea_regen_from_debate", use_container_width=True):
+                debate_feedback_i = "\n".join(
+                    f"[{d['ai']} R{d.get('round',1)}] {d['text']}" for d in debate_results_i
+                )
+                model_id_i = st.session_state.sg_current_ai[0]
+                angle_name_i = st.session_state.sg_current_angle[1]
+                try:
+                    from memory_manager import get_good_elements, get_rejected_ideas
+                    good_elements_i = get_good_elements(st.session_state.sg_script_type)
+                    rejected_ideas_i = get_rejected_ideas(st.session_state.sg_script_type)
+                except Exception:
+                    good_elements_i, rejected_ideas_i = [], []
+                with st.spinner("AIの意見を反映して40アイデアを再生成中..."):
+                    try:
+                        from script_crew import generate_ideas
+                        new_ideas = generate_ideas(
+                            script_type=st.session_state.sg_script_type,
+                            selected_themes=st.session_state.sg_selected_themes,
+                            angle_name=angle_name_i, good_elements=good_elements_i,
+                            rejected_ideas=rejected_ideas_i, model=model_id_i,
+                            debate_feedback=debate_feedback_i,
+                        )
+                        st.session_state.sg_ideas = new_ideas
+                        st.session_state.sg_selected_ideas = []
+                        st.session_state["sg_idea_debate"] = []
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"再生成エラー: {e}")
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_back, col_regen, col_next = st.columns([1, 1, 2])

@@ -189,6 +189,7 @@ def generate_themes(
     angle_name: str,
     model: str = "anthropic/claude-sonnet-4-6",
     keyword: str = "",
+    debate_feedback: str = "",
 ) -> list:
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
     char_range = "4500〜5000文字のYouTube台本" if script_type == "youtube" else "700〜800文字のリール動画台本"
@@ -199,6 +200,7 @@ def generate_themes(
     video_str = "\n".join(video_trends) or "（取得できませんでした）"
     youtube_str = "\n".join(youtube_trends) or "（取得できませんでした）"
     keyword_str = f"\n\n【キーワード指定（必ずこのテーマに関連させること）】\n「{keyword}」" if keyword.strip() else ""
+    debate_str = f"\n\n【AIたちの議論で指摘された改善点（必ず反映すること）】\n{debate_feedback}" if debate_feedback.strip() else ""
 
     # 40通り固有の切り口定義（10メイン角度 × 4サブ角度）
     ANGLE_SLOTS = [
@@ -257,7 +259,7 @@ def generate_themes(
     def _gen_one(slot_key: str, slot_name: str, slot_desc: str) -> str:
         prompt = f"""{persona}
 
-30〜50代女性向けダイエット・健康系の{char_range}テーマを1個だけ提案してください。{keyword_str}
+30〜50代女性向けダイエット・健康系の{char_range}テーマを1個だけ提案してください。{keyword_str}{debate_str}
 
 【この1テーマに使う切り口】「{slot_name}」
 {slot_desc}
@@ -330,11 +332,13 @@ def generate_ideas(
     good_elements: list,
     rejected_ideas: list,
     model: str = "anthropic/claude-sonnet-4-6",
+    debate_feedback: str = "",
 ) -> list:
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
     themes_str = " / ".join(selected_themes)
     good_str = "\n".join(f"・{e}" for e in good_elements) or "（まだデータなし）"
     rejected_str = "\n".join(f"・{i}" for i in rejected_ideas[-30:]) or "（なし）"
+    debate_str = f"\n\n【AIたちの議論で指摘された改善点（必ず反映すること）】\n{debate_feedback}" if debate_feedback.strip() else ""
 
     # 40通り固有の切り口（8カテゴリ × 5サブ角度）
     IDEA_SLOTS = [
@@ -393,7 +397,7 @@ def generate_ideas(
 
 選ばれたテーマ：「{themes_str}」
 
-このテーマに関するコンテンツアイデアを1個だけ提案してください。
+このテーマに関するコンテンツアイデアを1個だけ提案してください。{debate_str}
 
 【この1アイデアに使う切り口】「{slot_name}」
 {slot_desc}
@@ -452,82 +456,166 @@ def generate_ideas(
 
 def multi_agent_debate(items: list, content_type: str, script_type: str) -> list:
     """
-    Claude → ChatGPT → Gemini → Grok の順で順番に議論を行う（各自が前の発言を読んで応答）
-    Returns: [{"ai": str, "side": "left"/"right", "color": str, "bg": str, "icon": str, "text": str}]
+    2ラウンド × 4AI = 8メッセージの順番式議論
+    ラウンド1: 問題点の指摘
+    ラウンド2: 具体的な改善案の提示
+    Returns: [{"ai", "side", "color", "bg", "icon", "text", "round"}]
     """
     items_str = "\n".join(
         f"{i+1}. {t.split('｜')[0]}" for i, t in enumerate(items[:40])
     )
     media = "YouTube動画" if script_type == "youtube" else "リール動画（運動・家トレ系）"
 
-    history: list[dict] = []  # 発言を積み上げていく
+    history: list[dict] = []
 
     def _history_str() -> str:
-        return "\n".join(f"{m['ai']}: {m['text']}" for m in history)
+        return "\n".join(f"【{m['ai']} R{m['round']}】{m['text']}" for m in history)
 
-    # ── Claude: 最初の発言 ──────────────────────────────────────────
-    p1 = f"""あなたはClaudeです。以下の30〜50代女性向け{media}{content_type}リストを、論理的・建設的にレビューしてください。
+    def _call_safe(prompt: str, model: str, temp: float = 0.88) -> str:
+        try:
+            return _call_llm(prompt, model=model, temperature=temp, max_tokens=450)
+        except Exception as e:
+            return f"（エラー: {str(e)[:80]}）"
 
-{content_type}リスト:
-{items_str}
+    # ════════════ ラウンド1：問題点・弱点の指摘 ════════════
 
-口語体・キャラクター出しで150〜200字。ワンパターンや弱い点を具体的に指摘し「例：〇〇→〇〇」形式の改善案を1〜2個含めてください。"""
-    try:
-        t1 = _call_llm(p1, model="anthropic/claude-sonnet-4-6", temperature=0.88, max_tokens=350)
-    except Exception as e:
-        t1 = f"（エラー: {str(e)[:60]}）"
-    history.append({"ai": "Claude", "side": "left", "color": "#7C3AED", "bg": "#F5F3FF", "icon": "🟣", "text": t1})
-
-    # ── ChatGPT: Claudeを受けて ────────────────────────────────────
-    p2 = f"""あなたはChatGPTです。Claudeの意見を読んで、マーケティング視点から意見を述べてください。
+    # R1-Claude: 重複・ワンパターンを具体的な番号で指摘
+    t = _call_safe(f"""あなたはClaudeです。以下の30〜50代女性向け{media}{content_type}リストを批評してください。
 
 {content_type}リスト:
 {items_str}
 
---- これまでの会話 ---
+【批評の観点】
+・似たような内容が重複している番号を具体的に列挙（例：「3番と17番は同じアプローチ」）
+・視聴者に刺さらないと思う番号とその理由を2〜3つ挙げる
+・全体として何が足りないか一言で
+
+200字以内、口語体で話してください。""", "anthropic/claude-sonnet-4-6")
+    history.append({"ai": "Claude", "side": "left", "color": "#7C3AED", "bg": "#F5F3FF", "icon": "🟣", "text": t, "round": 1})
+
+    # R1-ChatGPT: Claudeの指摘を受けてマーケ視点で補足
+    t = _call_safe(f"""あなたはChatGPTです。Claudeの批評を読み、マーケティング・クリック率の視点から補足してください。
+
+{content_type}リスト:
+{items_str}
+
+--- 会話履歴 ---
 {_history_str()}
 ---
 
-口語体・キャラクター出しで150〜200字。Claudeへの同意・補足・反論を交えつつ、視聴者（35〜50代女性）目線の新しい視点を加えてください。"""
-    try:
-        t2 = _call_llm(p2, model="gpt-4o", temperature=0.88, max_tokens=350)
-    except Exception as e:
-        t2 = f"（エラー: {str(e)[:60]}）"
-    history.append({"ai": "ChatGPT", "side": "right", "color": "#059669", "bg": "#F0FDF4", "icon": "🟢", "text": t2})
+【補足の観点】
+・Claudeが指摘しなかった問題（タイトルが弱い、緊急性がない等）を具体的な番号で指摘
+・35〜50代女性が「これ私のことだ！」と感じるかどうかの視点で2〜3番号を評価
+・改善の方向性を1行で
 
-    # ── Gemini: 2人を受けてデータ視点から ────────────────────────
-    p3 = f"""あなたはGeminiです。ClaudeとChatGPTの議論を踏まえ、データ・トレンド視点から加わってください。
+200字以内、口語体で。""", "gpt-4o")
+    history.append({"ai": "ChatGPT", "side": "right", "color": "#059669", "bg": "#F0FDF4", "icon": "🟢", "text": t, "round": 1})
 
-{content_type}リスト:
-{items_str}
-
---- これまでの会話 ---
-{_history_str()}
----
-
-口語体・キャラクター出しで150〜200字。2人が見落としている点を指摘し、数字や傾向を引用しながら具体的な改善を提案してください。"""
-    try:
-        t3 = _call_llm(p3, model="gemini/gemini-2.5-flash", temperature=0.88, max_tokens=350)
-    except Exception as e:
-        t3 = f"（エラー: {str(e)[:60]}）"
-    history.append({"ai": "Gemini", "side": "left", "color": "#1D4ED8", "bg": "#EFF6FF", "icon": "🔵", "text": t3})
-
-    # ── Grok: 辛口で締める ─────────────────────────────────────────
-    p4 = f"""あなたはGrokです。3人の議論を聞いた上で、率直・辛口に本音を言ってください。
+    # R1-Gemini: 不足しているトレンド・角度を指摘
+    t = _call_safe(f"""あなたはGeminiです。ClaudeとChatGPTの批評を踏まえ、トレンド・データの視点から指摘してください。
 
 {content_type}リスト:
 {items_str}
 
---- これまでの会話 ---
+--- 会話履歴 ---
 {_history_str()}
 ---
 
-口語体・キャラクター出しで150〜200字。遠慮なく「見飽きた」「つまらない」など本音で、でも具体的な改善案1〜2個をセットで伝えてください。"""
-    try:
-        t4 = _call_llm(p4, model="xai/grok-3-mini", temperature=0.9, max_tokens=350)
-    except Exception as e:
-        t4 = f"（エラー: {str(e)[:60]}）"
-    history.append({"ai": "Grok", "side": "right", "color": "#111827", "bg": "#F9FAFB", "icon": "⚫", "text": t4})
+【指摘の観点】
+・2024〜2025年のトレンドで、このリストに入っていない重要な角度を2〜3個具体的に
+・「今この時期に見たい」という旬の切り口が何番に欠けているか
+・データや検索トレンドから見た弱点を一言
+
+200字以内、口語体で。""", "gemini/gemini-2.5-flash")
+    history.append({"ai": "Gemini", "side": "left", "color": "#1D4ED8", "bg": "#EFF6FF", "icon": "🔵", "text": t, "round": 1})
+
+    # R1-Grok: 辛口で本音の総括
+    t = _call_safe(f"""あなたはGrokです。3人の批評を全部聞いた上で、遠慮なく本音を言ってください。
+
+{content_type}リスト:
+{items_str}
+
+--- 会話履歴 ---
+{_history_str()}
+---
+
+【本音の観点】
+・このリスト全体に対して一番致命的な問題を1つ断言する
+・「視聴者が絶対スルーする」と思う番号を3つ挙げて理由を一言ずつ
+・3人の議論で見落とされていることがあれば追加
+
+200字以内、辛口・口語体で。""", "xai/grok-3-mini", temp=0.9)
+    history.append({"ai": "Grok", "side": "right", "color": "#111827", "bg": "#F9FAFB", "icon": "⚫", "text": t, "round": 1})
+
+    # ════════════ ラウンド2：具体的な改善案の提示 ════════════
+
+    # R2-Claude: 具体的な新テーマ/アイデアを提案
+    t = _call_safe(f"""あなたはClaudeです。ラウンド1の議論を踏まえて、具体的な改善案を提示してください。
+
+{content_type}リスト:
+{items_str}
+
+--- ラウンド1の議論 ---
+{_history_str()}
+---
+
+【改善案の出し方】
+・削除すべき番号を2〜3つ挙げ、その代わりに入れるべき具体的な新{content_type}タイトルを提案
+・新タイトルは「〇〇｜△△／□□／◇◇」形式で1〜2個
+・なぜそのタイトルの方がいいかを一言
+
+200字以内、口語体で。""", "anthropic/claude-sonnet-4-6")
+    history.append({"ai": "Claude", "side": "left", "color": "#7C3AED", "bg": "#F5F3FF", "icon": "🟣", "text": t, "round": 2})
+
+    # R2-ChatGPT: Claudeの提案に乗っかりつつ追加提案
+    t = _call_safe(f"""あなたはChatGPTです。Claudeの改善案に同意・補足しながら、あなた独自の追加提案をしてください。
+
+{content_type}リスト:
+{items_str}
+
+--- 全会話 ---
+{_history_str()}
+---
+
+【追加提案の出し方】
+・Claudeの提案で特に良いと思う点を一言
+・さらに追加したい具体的な新{content_type}タイトルを「〇〇｜△△／□□／◇◇」形式で1〜2個
+・特にクリック率・感情的引きが高そうな理由を一言
+
+200字以内、口語体で。""", "gpt-4o")
+    history.append({"ai": "ChatGPT", "side": "right", "color": "#059669", "bg": "#F0FDF4", "icon": "🟢", "text": t, "round": 2})
+
+    # R2-Gemini: 旬のトレンドを活かした代替案
+    t = _call_safe(f"""あなたはGeminiです。今旬のトレンドを活かした代替{content_type}を提案してください。
+
+{content_type}リスト:
+{items_str}
+
+--- 全会話 ---
+{_history_str()}
+---
+
+【提案の出し方】
+・2025年のトレンドや話題と絡めた新{content_type}タイトルを「〇〇｜△△／□□／◇◇」形式で2個
+・なぜ今このタイミングで効果的かを数字・データを交えて一言
+
+200字以内、口語体で。""", "gemini/gemini-2.5-flash")
+    history.append({"ai": "Gemini", "side": "left", "color": "#1D4ED8", "bg": "#EFF6FF", "icon": "🔵", "text": t, "round": 2})
+
+    # R2-Grok: 議論を総括して「再生成するならこう変えろ」と断言
+    t = _call_safe(f"""あなたはGrokです。2ラウンドの議論を踏まえて、再生成に向けた最終指令を出してください。
+
+--- 全会話 ---
+{_history_str()}
+---
+
+【最終指令の出し方】
+・「次の生成では必ずこうしろ」という具体的なルールを3つ箇条書き
+・特に避けるべきパターンを一言で
+・「俺ならこう変える」という一番重要な改善点を断言
+
+200字以内、辛口・命令口調で。""", "xai/grok-3-mini", temp=0.9)
+    history.append({"ai": "Grok", "side": "right", "color": "#111827", "bg": "#F9FAFB", "icon": "⚫", "text": t, "round": 2})
 
     return history
 
