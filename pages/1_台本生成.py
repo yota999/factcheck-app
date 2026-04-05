@@ -1541,7 +1541,7 @@ elif step == 3:
             st.session_state[_ta_key] = st.session_state.sg_edited_draft
         edited = st.text_area(
             "台本（直接編集できます）",
-            height=500,
+            height=1000,
             key=_ta_key,
         )
         char_count = len(edited)
@@ -1851,7 +1851,7 @@ border:1px solid #C7D2FE;box-shadow:0 2px 12px rgba(79,70,229,.06);">
         edited_final = st.text_area(
             "台本（ここで最終編集できます）",
             value=final_script,
-            height=420,
+            height=840,
             key="sg_final_edit_area",
         )
         char_after = len(edited_final)
