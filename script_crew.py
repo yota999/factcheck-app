@@ -450,57 +450,91 @@ def generate_ideas(
     return [t for t in results if t][:40]
 
 
-def multi_agent_review(items: list, content_type: str, script_type: str) -> list:
+def multi_agent_debate(items: list, content_type: str, script_type: str) -> list:
     """
-    Claude・ChatGPT・Grokの3AIがテーマ/アイデアリストをレビューして改善意見を返す
-    Returns: [{"ai": str, "color": str, "bg": str, "icon": str, "comment": str}]
+    Claude → ChatGPT → Gemini → Grok の順で順番に議論を行う（各自が前の発言を読んで応答）
+    Returns: [{"ai": str, "side": "left"/"right", "color": str, "bg": str, "icon": str, "text": str}]
     """
     items_str = "\n".join(
         f"{i+1}. {t.split('｜')[0]}" for i, t in enumerate(items[:40])
     )
     media = "YouTube動画" if script_type == "youtube" else "リール動画（運動・家トレ系）"
 
-    agents = [
-        ("anthropic/claude-sonnet-4-6", "Claude", "#7C3AED", "#F5F3FF", "🟣",
-         "論理的・建設的に。ワンパターンや重複を具体的に指摘して"),
-        ("gpt-4o", "ChatGPT", "#059669", "#F0FDF4", "🟢",
-         "バランスよく・マーケティング視点で。視聴者に刺さるかどうかを重視して"),
-        ("xai/grok-3-mini", "Grok", "#111827", "#F9FAFB", "⚫",
-         "率直・辛口に。遠慮なく「見飽きた」「つまらない」など本音で語って"),
-    ]
+    history: list[dict] = []  # 発言を積み上げていく
 
-    def _review_one(model: str, ai_name: str, tone: str) -> str:
-        prompt = f"""あなたは{ai_name}です。以下の30〜50代女性向け{media}の{content_type}リストを{tone}レビューしてください。
+    def _history_str() -> str:
+        return "\n".join(f"{m['ai']}: {m['text']}" for m in history)
+
+    # ── Claude: 最初の発言 ──────────────────────────────────────────
+    p1 = f"""あなたはClaudeです。以下の30〜50代女性向け{media}{content_type}リストを、論理的・建設的にレビューしてください。
 
 {content_type}リスト:
 {items_str}
 
-【レビュー基準】
-・ワンパターン・似た内容の繰り返しがないか
-・視聴者（35〜50代女性）に本当に刺さるか
-・もっと良くなる改善点
+口語体・キャラクター出しで150〜200字。ワンパターンや弱い点を具体的に指摘し「例：〇〇→〇〇」形式の改善案を1〜2個含めてください。"""
+    try:
+        t1 = _call_llm(p1, model="anthropic/claude-sonnet-4-6", temperature=0.88, max_tokens=350)
+    except Exception as e:
+        t1 = f"（エラー: {str(e)[:60]}）"
+    history.append({"ai": "Claude", "side": "left", "color": "#7C3AED", "bg": "#F5F3FF", "icon": "🟣", "text": t1})
 
-150〜200字で、口語体・キャラクターを出して話してください。
-改善提案は「例：〇〇→〇〇」の形で1〜2個含めてください。"""
-        return _call_llm(prompt, model=model, temperature=0.88, max_tokens=400)
+    # ── ChatGPT: Claudeを受けて ────────────────────────────────────
+    p2 = f"""あなたはChatGPTです。Claudeの意見を読んで、マーケティング視点から意見を述べてください。
 
-    import concurrent.futures as _cf
-    results_map: dict = {}
-    with _cf.ThreadPoolExecutor(max_workers=3) as ex:
-        future_map = {
-            ex.submit(_review_one, m, n, tone): (n, col, bg, icon)
-            for m, n, col, bg, icon, tone in agents
-        }
-        for fut in _cf.as_completed(future_map):
-            n, col, bg, icon = future_map[fut]
-            try:
-                comment = fut.result()
-            except Exception as e:
-                comment = f"（レビューエラー: {str(e)[:60]}）"
-            results_map[n] = {"ai": n, "color": col, "bg": bg, "icon": icon, "comment": comment}
+{content_type}リスト:
+{items_str}
 
-    order = [n for _, n, *_ in agents]
-    return [results_map[n] for n in order if n in results_map]
+--- これまでの会話 ---
+{_history_str()}
+---
+
+口語体・キャラクター出しで150〜200字。Claudeへの同意・補足・反論を交えつつ、視聴者（35〜50代女性）目線の新しい視点を加えてください。"""
+    try:
+        t2 = _call_llm(p2, model="gpt-4o", temperature=0.88, max_tokens=350)
+    except Exception as e:
+        t2 = f"（エラー: {str(e)[:60]}）"
+    history.append({"ai": "ChatGPT", "side": "right", "color": "#059669", "bg": "#F0FDF4", "icon": "🟢", "text": t2})
+
+    # ── Gemini: 2人を受けてデータ視点から ────────────────────────
+    p3 = f"""あなたはGeminiです。ClaudeとChatGPTの議論を踏まえ、データ・トレンド視点から加わってください。
+
+{content_type}リスト:
+{items_str}
+
+--- これまでの会話 ---
+{_history_str()}
+---
+
+口語体・キャラクター出しで150〜200字。2人が見落としている点を指摘し、数字や傾向を引用しながら具体的な改善を提案してください。"""
+    try:
+        t3 = _call_llm(p3, model="gemini/gemini-2.5-flash", temperature=0.88, max_tokens=350)
+    except Exception as e:
+        t3 = f"（エラー: {str(e)[:60]}）"
+    history.append({"ai": "Gemini", "side": "left", "color": "#1D4ED8", "bg": "#EFF6FF", "icon": "🔵", "text": t3})
+
+    # ── Grok: 辛口で締める ─────────────────────────────────────────
+    p4 = f"""あなたはGrokです。3人の議論を聞いた上で、率直・辛口に本音を言ってください。
+
+{content_type}リスト:
+{items_str}
+
+--- これまでの会話 ---
+{_history_str()}
+---
+
+口語体・キャラクター出しで150〜200字。遠慮なく「見飽きた」「つまらない」など本音で、でも具体的な改善案1〜2個をセットで伝えてください。"""
+    try:
+        t4 = _call_llm(p4, model="xai/grok-3-mini", temperature=0.9, max_tokens=350)
+    except Exception as e:
+        t4 = f"（エラー: {str(e)[:60]}）"
+    history.append({"ai": "Grok", "side": "right", "color": "#111827", "bg": "#F9FAFB", "icon": "⚫", "text": t4})
+
+    return history
+
+
+# 後方互換用エイリアス
+def multi_agent_review(items: list, content_type: str, script_type: str) -> list:
+    return multi_agent_debate(items, content_type, script_type)
 
 
 def generate_draft(
@@ -865,6 +899,151 @@ def auto_correct_script(original: str, fc_results: list, model: str = "anthropic
     try:
         text = _call_llm(prompt, model=model, temperature=0.2, max_tokens=4000)
         # 修正版台本と説明を分離
+        import re
+        script_match = re.search(r'## 修正版台本\s*\n(.*?)(?=\n## |\Z)', text, re.DOTALL)
+        changes_match = re.search(r'## 修正箇所の説明\s*\n(.*?)(?=\n## |\Z)', text, re.DOTALL)
+        corrected = script_match.group(1).strip() if script_match else text
+        changes = changes_match.group(1).strip() if changes_match else ""
+        return {"corrected": corrected, "changes": changes, "error": None}
+    except Exception as e:
+        return {"corrected": "", "changes": "", "error": str(e)}
+
+
+# ── AI討論型ファクトチェック ─────────────────────────────────────────────
+
+_DISCUSSION_AGENTS = [
+    ("Claude",  "anthropic/claude-sonnet-4-6",  "🟣", "left",  "#7C3AED", "#F5F3FF"),
+    ("ChatGPT", "gpt-4o",                       "🟢", "right", "#059669", "#ECFDF5"),
+    ("Grok",    "xai/grok-3-mini",              "⚫", "left",  "#374151", "#F3F4F6"),
+    ("Gemini",  "gemini/gemini-2.5-flash",      "🔵", "right", "#1D4ED8", "#EFF6FF"),
+]
+
+_R1_PROMPTS = {
+    "Claude": """あなたはAI「Claude」です。ChatGPT・Grok・Geminiと一緒に台本のファクトチェック討論をしています。
+以下の台本を読んで、事実として問題がある箇所・根拠の薄い数字・誇大な主張を具体的に指摘してください。
+他のAIへ話しかける会話口調で書いてください（200〜280字程度）。
+
+【台本】
+{script}""",
+
+    "ChatGPT": """あなたはAI「ChatGPT」として討論に参加しています。
+Claudeの指摘内容に対して同意・反論・補足しながら、あなた自身が見つけた追加の問題点も述べてください（200〜280字）。
+
+【これまでの討論】
+{history}""",
+
+    "Grok": """あなたはAI「Grok」として討論に参加しています。
+ClaudeとChatGPTの議論を受けて、率直に補足・反論・新たな視点を加えてください。
+2人が見落としている点や過剰指摘だと思う点があれば遠慮なく言ってください（200〜280字）。
+
+【これまでの討論】
+{history}""",
+
+    "Gemini": """あなたはAI「Gemini」として討論に参加しています。
+3人の議論を整理して、修正が最も必要な箇所を優先順位付けし、あなた独自の視点も加えてください（200〜280字）。
+
+【これまでの討論】
+{history}""",
+}
+
+_R2_PROMPTS = {
+    "Claude": """あなたはAI「Claude」です。ここまでの討論を踏まえて、台本への具体的な修正提案を3つ以内にまとめてください。
+「〇〇という表現を△△に変える」という具体的な形で提案してください（200〜280字）。
+
+【これまでの討論】
+{history}""",
+
+    "ChatGPT": """あなたはAI「ChatGPT」です。Claudeの修正提案に対して賛成・修正意見・追加提案を述べてください。
+合意形成を意識して、最終的にどう直すべきかをまとめてください（200〜280字）。
+
+【これまでの討論】
+{history}""",
+
+    "Grok": """あなたはAI「Grok」です。討論の締めくくりとして、絶対に直すべき最重要ポイントを1〜2点だけ断言してください（150〜200字）。
+
+【これまでの討論】
+{history}""",
+
+    "Gemini": """あなたはAI「Gemini」です。全員の意見を統合し、修正の優先順位と最終結論を出してください。
+この討論の議長として締めの発言をしてください（200〜280字）。
+
+【これまでの討論】
+{history}""",
+}
+
+
+def factcheck_discussion(script: str) -> list:
+    """4AIが順番に2回ずつ発言するファクトチェック討論（計8メッセージ）。
+    各AIは前の発言を読んで返答する。順次実行。
+    Returns: list of message dicts
+    """
+    messages = []
+    script_excerpt = script[:2500]
+
+    def _history():
+        if not messages:
+            return "（まだ発言なし）"
+        return "\n\n".join(
+            f"【{m['agent']}（Round{m['round']}）】{m['message']}"
+            for m in messages
+        )
+
+    for round_num, prompts in enumerate([_R1_PROMPTS, _R2_PROMPTS], 1):
+        for agent_name, model_id, icon, side, color, bg in _DISCUSSION_AGENTS:
+            tmpl = prompts[agent_name]
+            prompt = tmpl.format(script=script_excerpt, history=_history())
+            try:
+                text = _call_llm(prompt, model=model_id, temperature=0.75, max_tokens=600)
+            except Exception as e:
+                text = f"（応答エラー: {e}）"
+            messages.append({
+                "agent": agent_name,
+                "model": model_id,
+                "icon": icon,
+                "side": side,
+                "color": color,
+                "bg": bg,
+                "message": text.strip(),
+                "round": round_num,
+            })
+
+    return messages
+
+
+def auto_correct_from_discussion(original: str, discussion: list,
+                                  model: str = "anthropic/claude-sonnet-4-6") -> dict:
+    """AI討論の全指摘を元に台本を自動修正する"""
+    discussion_text = "\n\n".join([
+        f"【{m['agent']} Round{m['round']}】{m['message']}"
+        for m in discussion
+    ])
+
+    prompt = f"""あなたは台本編集の専門家です。
+4つのAIが以下の台本についてファクトチェック討論を行いました。
+討論で指摘された問題点を全て反映した修正版台本を作成してください。
+
+【元の台本】
+{original}
+
+【AI討論の内容】
+{discussion_text}
+
+【修正ルール】
+- 討論で複数のAIが問題視した箇所は必ず修正する
+- 根拠のない数字・誇大な主張は「一説によると」「〜とも言われています」などに変える
+- 「絶対」「必ず」など断定表現で根拠が薄いものは表現を緩める
+- 問題なしと合意された箇所は変更しない
+- 文体・構成・全体の流れ・文字数は元の台本を維持する
+
+【出力形式】
+## 修正版台本
+（修正した全文をそのまま）
+
+## 修正箇所の説明
+- （元の表現 → 修正後の表現、の形式で箇条書き）"""
+
+    try:
+        text = _call_llm(prompt, model=model, temperature=0.2, max_tokens=6000)
         import re
         script_match = re.search(r'## 修正版台本\s*\n(.*?)(?=\n## |\Z)', text, re.DOTALL)
         changes_match = re.search(r'## 修正箇所の説明\s*\n(.*?)(?=\n## |\Z)', text, re.DOTALL)

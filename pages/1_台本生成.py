@@ -597,6 +597,11 @@ def _init():
         "sg_variant_error": "",
         # ファクトチェック
         "sg_fc_results": [],
+        # FC討論型
+        "sg_fc_messages": [],
+        "sg_fc_corrected": "",
+        "sg_fc_changes": "",
+        "sg_fc_original_draft": "",
         # 部分ブラッシュアップ
         "sg_brushup_candidates": [],
         "sg_brushup_original": "",
@@ -1049,18 +1054,18 @@ elif step == 1:
             '<div style="background:linear-gradient(135deg,#F0F0FF,#E8F8F0,#FFF8E8);'
             'border-radius:14px;padding:14px 18px;margin-bottom:12px;">'
             '<div style="font-size:0.88rem;font-weight:700;color:#374151;margin-bottom:4px;">'
-            '🤖 AIたちにこのテーマリストを評価してもらう</div>'
-            '<div style="font-size:0.78rem;color:#6B7280;">Claude・ChatGPT・Grokが議論して改善点を指摘します</div>'
+            '🤖 AIたちにこのテーマリストを議論してもらう</div>'
+            '<div style="font-size:0.78rem;color:#6B7280;">Claude → ChatGPT → Gemini → Grok の順で順番に発言します（約40秒）</div>'
             '</div>',
             unsafe_allow_html=True,
         )
         col_debate_btn, col_debate_clear = st.columns([2, 1])
         with col_debate_btn:
-            if st.button("🎙️ AIに評価してもらう", key="sg_theme_debate_btn", use_container_width=True):
-                with st.spinner("Claude・ChatGPT・Grokが議論中...（30秒ほどかかります）"):
+            if st.button("🎙️ AIたちに議論してもらう", key="sg_theme_debate_btn", use_container_width=True):
+                with st.spinner("Claude → ChatGPT → Gemini → Grok の順で議論中..."):
                     try:
-                        from script_crew import multi_agent_review
-                        debate = multi_agent_review(
+                        from script_crew import multi_agent_debate
+                        debate = multi_agent_debate(
                             st.session_state.sg_themes,
                             "テーマ",
                             st.session_state.sg_script_type,
@@ -1077,20 +1082,39 @@ elif step == 1:
         debate_results_t = st.session_state.get("sg_theme_debate", [])
         if debate_results_t:
             st.markdown(
-                '<div style="font-size:0.82rem;font-weight:700;color:#374151;margin:10px 0 8px;">💬 AIたちの意見</div>',
+                '<div style="background:#1F2937;border-radius:14px;padding:14px 18px;margin:10px 0 6px;">'
+                '<div style="font-size:0.82rem;font-weight:700;color:#F9FAFB;">💬 AIたちの議論</div>'
+                '</div>',
                 unsafe_allow_html=True,
             )
             for dr in debate_results_t:
-                comment_html = dr["comment"].replace("\n", "<br>")
-                st.markdown(
-                    f'<div style="background:{dr["bg"]};border-left:4px solid {dr["color"]};'
-                    f'border-radius:0 12px 12px 0;padding:12px 16px;margin-bottom:10px;">'
-                    f'<div style="font-size:0.8rem;font-weight:700;color:{dr["color"]};margin-bottom:6px;">'
-                    f'{dr["icon"]} {dr["ai"]}</div>'
-                    f'<div style="font-size:0.83rem;color:#374151;line-height:1.65;">{comment_html}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+                msg_html = dr["text"].replace("\n", "<br>")
+                if dr["side"] == "left":
+                    st.markdown(
+                        f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;">'
+                        f'<div style="width:36px;height:36px;border-radius:50%;background:{dr["bg"]};'
+                        f'border:2px solid {dr["color"]};display:flex;align-items:center;'
+                        f'justify-content:center;font-size:1rem;flex-shrink:0;">{dr["icon"]}</div>'
+                        f'<div style="background:{dr["bg"]};border:1px solid {dr["color"]}33;'
+                        f'border-radius:4px 16px 16px 16px;padding:10px 14px;max-width:82%;">'
+                        f'<div style="font-size:0.72rem;font-weight:700;color:{dr["color"]};margin-bottom:5px;">{dr["ai"]}</div>'
+                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.65;">{msg_html}</div>'
+                        f'</div></div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;flex-direction:row-reverse;">'
+                        f'<div style="width:36px;height:36px;border-radius:50%;background:{dr["bg"]};'
+                        f'border:2px solid {dr["color"]};display:flex;align-items:center;'
+                        f'justify-content:center;font-size:1rem;flex-shrink:0;">{dr["icon"]}</div>'
+                        f'<div style="background:{dr["bg"]};border:1px solid {dr["color"]}33;'
+                        f'border-radius:16px 4px 16px 16px;padding:10px 14px;max-width:82%;">'
+                        f'<div style="font-size:0.72rem;font-weight:700;color:{dr["color"]};margin-bottom:5px;text-align:right;">{dr["ai"]}</div>'
+                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.65;">{msg_html}</div>'
+                        f'</div></div>',
+                        unsafe_allow_html=True,
+                    )
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_back, col_regen, col_next = st.columns([1, 1, 2])
@@ -1368,18 +1392,18 @@ elif step == 2:
             '<div style="background:linear-gradient(135deg,#F0F0FF,#E8F8F0,#FFF8E8);'
             'border-radius:14px;padding:14px 18px;margin-bottom:12px;">'
             '<div style="font-size:0.88rem;font-weight:700;color:#374151;margin-bottom:4px;">'
-            '🤖 AIたちにこのアイデアリストを評価してもらう</div>'
-            '<div style="font-size:0.78rem;color:#6B7280;">Claude・ChatGPT・Grokが議論して改善点を指摘します</div>'
+            '🤖 AIたちにこのアイデアリストを議論してもらう</div>'
+            '<div style="font-size:0.78rem;color:#6B7280;">Claude → ChatGPT → Gemini → Grok の順で順番に発言します（約40秒）</div>'
             '</div>',
             unsafe_allow_html=True,
         )
         col_idea_debate_btn, col_idea_debate_clear = st.columns([2, 1])
         with col_idea_debate_btn:
-            if st.button("🎙️ AIに評価してもらう", key="sg_idea_debate_btn", use_container_width=True):
-                with st.spinner("Claude・ChatGPT・Grokが議論中...（30秒ほどかかります）"):
+            if st.button("🎙️ AIたちに議論してもらう", key="sg_idea_debate_btn", use_container_width=True):
+                with st.spinner("Claude → ChatGPT → Gemini → Grok の順で議論中..."):
                     try:
-                        from script_crew import multi_agent_review
-                        debate_i = multi_agent_review(
+                        from script_crew import multi_agent_debate
+                        debate_i = multi_agent_debate(
                             st.session_state.sg_ideas,
                             "アイデア",
                             st.session_state.sg_script_type,
@@ -1396,20 +1420,39 @@ elif step == 2:
         debate_results_i = st.session_state.get("sg_idea_debate", [])
         if debate_results_i:
             st.markdown(
-                '<div style="font-size:0.82rem;font-weight:700;color:#374151;margin:10px 0 8px;">💬 AIたちの意見</div>',
+                '<div style="background:#1F2937;border-radius:14px;padding:14px 18px;margin:10px 0 6px;">'
+                '<div style="font-size:0.82rem;font-weight:700;color:#F9FAFB;">💬 AIたちの議論</div>'
+                '</div>',
                 unsafe_allow_html=True,
             )
             for dr_i in debate_results_i:
-                comment_html_i = dr_i["comment"].replace("\n", "<br>")
-                st.markdown(
-                    f'<div style="background:{dr_i["bg"]};border-left:4px solid {dr_i["color"]};'
-                    f'border-radius:0 12px 12px 0;padding:12px 16px;margin-bottom:10px;">'
-                    f'<div style="font-size:0.8rem;font-weight:700;color:{dr_i["color"]};margin-bottom:6px;">'
-                    f'{dr_i["icon"]} {dr_i["ai"]}</div>'
-                    f'<div style="font-size:0.83rem;color:#374151;line-height:1.65;">{comment_html_i}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+                msg_html_i = dr_i["text"].replace("\n", "<br>")
+                if dr_i["side"] == "left":
+                    st.markdown(
+                        f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;">'
+                        f'<div style="width:36px;height:36px;border-radius:50%;background:{dr_i["bg"]};'
+                        f'border:2px solid {dr_i["color"]};display:flex;align-items:center;'
+                        f'justify-content:center;font-size:1rem;flex-shrink:0;">{dr_i["icon"]}</div>'
+                        f'<div style="background:{dr_i["bg"]};border:1px solid {dr_i["color"]}33;'
+                        f'border-radius:4px 16px 16px 16px;padding:10px 14px;max-width:82%;">'
+                        f'<div style="font-size:0.72rem;font-weight:700;color:{dr_i["color"]};margin-bottom:5px;">{dr_i["ai"]}</div>'
+                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.65;">{msg_html_i}</div>'
+                        f'</div></div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;flex-direction:row-reverse;">'
+                        f'<div style="width:36px;height:36px;border-radius:50%;background:{dr_i["bg"]};'
+                        f'border:2px solid {dr_i["color"]};display:flex;align-items:center;'
+                        f'justify-content:center;font-size:1rem;flex-shrink:0;">{dr_i["icon"]}</div>'
+                        f'<div style="background:{dr_i["bg"]};border:1px solid {dr_i["color"]}33;'
+                        f'border-radius:16px 4px 16px 16px;padding:10px 14px;max-width:82%;">'
+                        f'<div style="font-size:0.72rem;font-weight:700;color:{dr_i["color"]};margin-bottom:5px;text-align:right;">{dr_i["ai"]}</div>'
+                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.65;">{msg_html_i}</div>'
+                        f'</div></div>',
+                        unsafe_allow_html=True,
+                    )
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_back, col_regen, col_next = st.columns([1, 1, 2])
@@ -1681,7 +1724,7 @@ elif step == 3:
                 st.session_state.pop("sg_direct_edit_v2", None)
                 st.rerun()
         with col_next2:
-            if st.button("ファクトチェック → 完成へ進む", type="primary",
+            if st.button("✅ 完成へ進む", type="primary",
                          key="s3_next", use_container_width=True):
                 st.session_state.sg_edited_draft = edited
                 # ── 編集差分が大きい場合は改善ルールを自動学習 ──
@@ -1704,23 +1747,27 @@ elif step == 3:
                             st.session_state["sg_last_learned_rules"] = consolidated
                     except Exception:
                         pass
-                st.session_state.sg_fc_results = []
+                st.session_state.sg_titles = ""
+                st.session_state.sg_fc_messages = []
+                st.session_state.sg_fc_corrected = ""
+                st.session_state.sg_fc_changes = ""
+                st.session_state.sg_fc_original_draft = ""
                 st.session_state.sg_step = 4
                 st.rerun()
 
 
 # ════════════════════════════════════════════════════════════════════
-# Step 4: 4モデル並列ファクトチェック + タイトル生成 + 最終調整 + 評価
+# Step 4: AI討論型ファクトチェック + タイトル生成 + 最終調整
 # ════════════════════════════════════════════════════════════════════
 elif step == 4:
     draft = st.session_state.sg_edited_draft
     script_type = st.session_state.sg_script_type
     model_id = st.session_state.sg_current_ai[0]
+    _, ai_name = st.session_state.sg_current_ai
 
-    st.markdown('<div class="section-header">Step 5 ／ ファクトチェック・タイトル生成・最終調整・評価</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Step 4 ／ 台本完成 ＆ 最終調整</div>', unsafe_allow_html=True)
 
-    # ────────────────────────────────────────────────────────────────
-    # 直前に学習したルールがあれば表示
+    # ── 直前に学習したルールがあれば表示 ──────────────────────────
     last_rules = st.session_state.get("sg_last_learned_rules", [])
     if last_rules:
         rules_html = "".join(
@@ -1736,255 +1783,104 @@ elif step == 4:
             f'{rules_html}</div>',
             unsafe_allow_html=True,
         )
-        st.session_state["sg_last_learned_rules"] = []  # 一度だけ表示
+        st.session_state["sg_last_learned_rules"] = []
 
-    # ────────────────────────────────────────────────────────────────
-    # A) ファクトチェック未実施 → 自動で開始
-    if not st.session_state.sg_fc_results:
-
-        st.markdown("""
-<div style="background:linear-gradient(135deg,#EEF2FF 0%,#F5F3FF 50%,#FDF4FF 100%);
-border-radius:14px;padding:24px 28px;margin:0 0 24px;
-border:1px solid #C7D2FE;box-shadow:0 2px 12px rgba(79,70,229,.06);">
-<h4 style="margin:0 0 10px;color:#1E1B4B;font-size:1.1rem;">🔬 4 AI 並列ファクトチェック</h4>
-<p style="margin:0;color:#4B5563;font-size:0.88rem;line-height:1.7;">
-4つのAIモデルが同時並列で台本の事実関係を独立検証します。<br>
-<span style="display:inline-flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
-<span style="background:#F5F3FF;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:600;color:#7C3AED;">🟣 Claude</span>
-<span style="background:#ECFDF5;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:600;color:#059669;">🟢 ChatGPT</span>
-<span style="background:#EFF6FF;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:600;color:#1D4ED8;">🔵 Gemini</span>
-<span style="background:#F9FAFB;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:600;color:#374151;">⚫ Grok</span>
-</span>
-</p>
-</div>
-""", unsafe_allow_html=True)
-
-        result_holder = {}
-
-        def _run_fc():
-            try:
-                from script_crew import factcheck_parallel
-                result_holder["fc"] = factcheck_parallel(draft)
-            except Exception as e:
-                result_holder["fc_error"] = str(e)
-
-        def _run_titles():
+    # ── タイトル自動生成 ──────────────────────────────────────────
+    titles = st.session_state.sg_titles
+    if not titles:
+        with st.spinner("タイトル候補を生成中..."):
             try:
                 from script_crew import generate_titles
-                result_holder["titles"] = generate_titles(
-                    draft=draft, script_type=script_type, model=model_id
-                )
+                titles = generate_titles(draft=draft, script_type=script_type, model=model_id)
+                st.session_state.sg_titles = titles
+                st.rerun()
             except Exception as e:
-                result_holder["titles"] = f"（タイトル生成エラー: {e}）"
+                st.warning(f"タイトル生成エラー: {e}")
 
-        t_fc = threading.Thread(target=_run_fc, daemon=True)
-        t_ti = threading.Thread(target=_run_titles, daemon=True)
-        t_fc.start(); t_ti.start()
+    # ── タイトル候補カード ────────────────────────────────────────
+    if titles:
+        st.markdown("### 🎯 タイトル候補 ＆ サムネイルテキスト")
+        col_t, col_s = st.columns([3, 2])
+        with col_t:
+            st.markdown(
+                '<div style="background:white;border:1px solid #E5E7EB;border-radius:12px;'
+                'padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.03);">'
+                '<div style="font-size:0.78rem;color:#9CA3AF;margin-bottom:12px;font-weight:600;">'
+                'タイトル候補</div>',
+                unsafe_allow_html=True,
+            )
+            in_titles = False
+            for line in titles.split("\n"):
+                if "タイトル" in line and line.startswith("#"):
+                    in_titles = True; continue
+                if line.startswith("#"):
+                    in_titles = False
+                if in_titles and line.strip():
+                    st.markdown(line)
+            st.markdown('</div>', unsafe_allow_html=True)
+        with col_s:
+            st.markdown(
+                '<div style="background:white;border:1px solid #E5E7EB;border-radius:12px;'
+                'padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.03);">'
+                '<div style="font-size:0.78rem;color:#9CA3AF;margin-bottom:12px;font-weight:600;">'
+                'サムネイル案</div>',
+                unsafe_allow_html=True,
+            )
+            in_thumb = False
+            for line in titles.split("\n"):
+                if "サムネイル" in line and line.startswith("#"):
+                    in_thumb = True; continue
+                if line.startswith("#"):
+                    in_thumb = False
+                if in_thumb and line.strip():
+                    st.markdown(
+                        f'<div style="background:#F5F3FF;border-radius:8px;padding:10px 14px;'
+                        f'margin-bottom:8px;font-size:0.88rem;border-left:3px solid #7C3AED;">{line}</div>',
+                    unsafe_allow_html=True,
+                )
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        prog = st.progress(0)
-        status_ph = st.empty()
-        ai_status = st.empty()
-        elapsed = 0
-        MODEL_LABELS = ["Claude", "ChatGPT", "Gemini", "Grok"]
-        while t_fc.is_alive() or t_ti.is_alive():
-            elapsed += 1
-            pct = min(90, elapsed * 2)
-            prog.progress(pct)
-            fc_s = "検証中..." if t_fc.is_alive() else "完了"
-            ti_s = "生成中..." if t_ti.is_alive() else "完了"
-            status_ph.info(f"ファクトチェック: **{fc_s}** ｜ タイトル生成: **{ti_s}**")
-            dots = "." * ((elapsed % 3) + 1)
-            ai_status.caption(f"4つのAIが並列で検証中{dots} {' / '.join(MODEL_LABELS)}")
-            time.sleep(1)
-        t_fc.join(); t_ti.join()
-        prog.progress(100)
-        status_ph.empty(); ai_status.empty()
+    st.markdown("---")
 
-        if "fc_error" in result_holder:
-            st.error(f"ファクトチェックエラー: {result_holder['fc_error']}")
-            if st.button("🔄 やり直す", key="fc_retry"):
-                st.rerun()
-        else:
-            st.session_state.sg_fc_results = result_holder.get("fc", [])
-            st.session_state.sg_titles = result_holder.get("titles", "")
-            st.session_state["sg_final_sections"] = []
-            st.rerun()
+    # ─ 完成台本 ＆ 最終調整 ──────────────────────────────────────
+    st.markdown("### 📄 完成台本 ＆ 最終調整")
 
-    # ────────────────────────────────────────────────────────────────
-    # B) ファクトチェック完了 → 結果表示 + 最終調整 + 評価
-    # ────────────────────────────────────────────────────────────────
+    target_min, target_max = (4500, 5000) if script_type == "youtube" else (700, 800)
+    final_script = st.session_state.sg_edited_draft
+    char_count = len(final_script)
+
+    # 文字数バッジ
+    if char_count < target_min:
+        st.warning(f"**{char_count}文字** ／ 目標 {target_min}〜{target_max}文字（あと {target_min - char_count}文字）")
+    elif char_count > target_max:
+        st.warning(f"**{char_count}文字** ／ {char_count - target_max}文字オーバー")
     else:
-        _, ai_name = st.session_state.sg_current_ai
-        titles = st.session_state.sg_titles
-        fc_results = st.session_state.sg_fc_results
+        st.success(f"**{char_count}文字** ／ 目標範囲内 ✓")
 
-        # やり直しボタン
-        col_redo_l, col_redo_r = st.columns([4, 1])
-        with col_redo_r:
-            if st.button("🔄 FCをやり直す", key="redo_fc",
-                         help="ファクトチェックを最新モデルで再実行します"):
-                st.session_state.sg_fc_results = []
-                st.session_state.sg_titles = ""
-                st.session_state["sg_final_sections"] = []
-                st.rerun()
-
-        # ─ タイトル候補カード ────────────────────────────────────────
-        if titles:
-            st.markdown("### 🎯 タイトル候補 ＆ サムネイルテキスト")
-            import re as _re
-            col_t, col_s = st.columns([3, 2])
-            with col_t:
-                st.markdown(
-                    '<div style="background:white;border:1px solid #E5E7EB;border-radius:12px;'
-                    'padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.03);">'
-                    '<div style="font-size:0.78rem;color:#9CA3AF;margin-bottom:12px;font-weight:600;'
-                    'text-transform:uppercase;letter-spacing:.06em;">'
-                    'タイトル候補</div>',
-                    unsafe_allow_html=True,
-                )
-                in_titles = False
-                for line in titles.split("\n"):
-                    if "タイトル" in line and line.startswith("#"):
-                        in_titles = True; continue
-                    if line.startswith("#"):
-                        in_titles = False
-                    if in_titles and line.strip():
-                        st.markdown(line)
-                st.markdown('</div>', unsafe_allow_html=True)
-            with col_s:
-                st.markdown(
-                    '<div style="background:white;border:1px solid #E5E7EB;border-radius:12px;'
-                    'padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.03);">'
-                    '<div style="font-size:0.78rem;color:#9CA3AF;margin-bottom:12px;font-weight:600;'
-                    'text-transform:uppercase;letter-spacing:.06em;">'
-                    'サムネイル案</div>',
-                    unsafe_allow_html=True,
-                )
-                in_thumb = False
-                for line in titles.split("\n"):
-                    if "サムネイル" in line and line.startswith("#"):
-                        in_thumb = True; continue
-                    if line.startswith("#"):
-                        in_thumb = False
-                    if in_thumb and line.strip():
-                        st.markdown(
-                            f'<div style="background:#F5F3FF;border-radius:8px;padding:10px 14px;'
-                            f'margin-bottom:8px;font-size:0.88rem;border-left:3px solid #7C3AED;">{line}</div>',
-                            unsafe_allow_html=True,
-                        )
-                st.markdown('</div>', unsafe_allow_html=True)
-
-        st.markdown("---")
-
-        # ─ ファクトチェック 4カラム ───────────────────────────────────
-        st.markdown("### 🔬 ファクトチェック結果（4 AI 並列）")
-
-        MODEL_STYLES = {
-            "Claude Sonnet 4.6":  {"color": "#7C3AED", "bg": "#F5F3FF", "border": "#DDD6FE", "icon": "🟣"},
-            "ChatGPT (GPT-4o)":   {"color": "#059669", "bg": "#ECFDF5", "border": "#A7F3D0", "icon": "🟢"},
-            "Gemini 2.5 Flash":   {"color": "#1D4ED8", "bg": "#EFF6FF", "border": "#BFDBFE", "icon": "🔵"},
-            "Grok 3 Mini":        {"color": "#374151", "bg": "#F9FAFB", "border": "#D1D5DB", "icon": "⚫"},
-        }
-        VERDICT_MAP = {
-            "✅": ("概ね正確", "#059669", "#ECFDF5"),
-            "⚠️": ("一部要注意", "#D97706", "#FFFBEB"),
-            "❌": ("問題あり",   "#DC2626", "#FEF2F2"),
-            "❓": ("確認中",     "#6B7280", "#F9FAFB"),
-        }
-
-        # サマリーバー
-        smry_cols = st.columns(4)
-        for col_s2, res in zip(smry_cols, fc_results):
-            if res is None:
-                continue
-            mname = res.get("model_name", "")
-            style = MODEL_STYLES.get(mname, {"color": "#4F46E5", "bg": "#EEF2FF", "border": "#C7D2FE", "icon": "🤖"})
-            verdict = res.get("verdict", "❓")
-            v_label, v_color, v_bg = VERDICT_MAP.get(verdict, ("確認中", "#6B7280", "#F9FAFB"))
-            with col_s2:
-                st.markdown(
-                    f'<div class="fc-card" style="background:{style["bg"]};'
-                    f'border-color:{style["border"]};">'
-                    f'<div class="model-name" style="color:{style["color"]};">{style["icon"]} {mname}</div>'
-                    f'<div class="verdict">{verdict}</div>'
-                    f'<div class="verdict-label" style="color:{v_color};background:{v_bg};">{v_label}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # 詳細：各モデルのタブ表示
-        tab_labels = [
-            f'{MODEL_STYLES.get(r.get("model_name",""), {}).get("icon","🤖")} {r.get("model_name","")}'
-            for r in fc_results if r
-        ]
-        if tab_labels:
-            tabs = st.tabs(tab_labels)
-            for tab, res in zip(tabs, [r for r in fc_results if r]):
-                with tab:
-                    if res.get("error"):
-                        st.error(f"APIエラー: {res['error']}")
-                    elif res.get("text"):
-                        text = res["text"]
-                        for line in text.split("\n"):
-                            stripped = line.strip()
-                            if not stripped:
-                                st.markdown("")
-                            elif stripped.startswith("## "):
-                                st.markdown(f"**{stripped[3:]}**")
-                            elif stripped.startswith("### "):
-                                st.markdown(f"---\n**{stripped[4:]}**")
-                            elif "✅" in stripped:
-                                st.success(stripped)
-                            elif "❌" in stripped:
-                                st.error(stripped)
-                            elif "⚠️" in stripped:
-                                st.warning(stripped)
-                            else:
-                                st.write(stripped)
-
-        st.markdown("---")
-
-        # ─ 完成台本 ＆ 最終調整 ──────────────────────────────────
-        st.markdown("### 📄 完成台本 ＆ 最終調整")
-
-        target_min, target_max = (4500, 5000) if script_type == "youtube" else (700, 800)
-        final_script = st.session_state.sg_edited_draft
-        char_count = len(final_script)
-
-        # 文字数バッジ
-        if char_count < target_min:
-            st.warning(f"**{char_count}文字** ／ 目標 {target_min}〜{target_max}文字（あと {target_min - char_count}文字）")
-        elif char_count > target_max:
-            st.warning(f"**{char_count}文字** ／ {char_count - target_max}文字オーバー")
+    # 直接編集テキストエリア
+    edited_final = st.text_area(
+        "台本（ここで最終編集できます）",
+        value=final_script,
+        height=840,
+        key="sg_final_edit_area",
+    )
+    char_after = len(edited_final)
+    if char_after != char_count:
+        if char_after < target_min:
+            st.caption(f"📝 編集後: {char_after}文字（あと {target_min - char_after}文字）")
+        elif char_after > target_max:
+            st.caption(f"📝 編集後: {char_after}文字（{char_after - target_max}文字オーバー）")
         else:
-            st.success(f"**{char_count}文字** ／ 目標範囲内 ✓")
+            st.caption(f"📝 編集後: {char_after}文字 ✓")
 
-        # 直接編集テキストエリア
-        edited_final = st.text_area(
-            "台本（ここで最終編集できます）",
-            value=final_script,
-            height=840,
-            key="sg_final_edit_area",
-        )
-        char_after = len(edited_final)
-        if char_after != char_count:
-            if char_after < target_min:
-                st.caption(f"📝 編集後: {char_after}文字（あと {target_min - char_after}文字）")
-            elif char_after > target_max:
-                st.caption(f"📝 編集後: {char_after}文字（{char_after - target_max}文字オーバー）")
-            else:
-                st.caption(f"📝 編集後: {char_after}文字 ✓")
+    # テキストエリアの変更を即時反映
+    if edited_final != final_script:
+        st.session_state.sg_edited_draft = edited_final
 
-        # テキストエリアの変更を即時反映
-        if edited_final != final_script:
-            st.session_state.sg_edited_draft = edited_final
+    st.markdown("---")
 
-        st.markdown("---")
-
-        # ── 部分ブラッシュアップ ────────────────────────────────────────
-        st.markdown("""
+    # ── 部分ブラッシュアップ ────────────────────────────────────────
+    st.markdown("""
 <div style="background:linear-gradient(135deg,#F0F9FF 0%,#EFF6FF 100%);
 border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD;">
 <h4 style="margin:0 0 4px;color:#0C4A6E;font-size:1.05rem;">✏️ 部分ブラッシュアップ</h4>
@@ -1994,348 +1890,348 @@ border-radius:14px;padding:16px 22px;margin-bottom:16px;border:1px solid #BAE6FD
 </div>
 """, unsafe_allow_html=True)
 
-        # ── ブロック一覧（チェックボックスで複数選択）──
-        current_script_for_bu = st.session_state.sg_edited_draft
-        blocks = [b.strip() for b in current_script_for_bu.split("\n\n") if b.strip()]
-        if len(blocks) <= 2:
-            blocks = [b.strip() for b in current_script_for_bu.split("\n") if b.strip()]
+    # ── ブロック一覧（チェックボックスで複数選択）──
+    current_script_for_bu = st.session_state.sg_edited_draft
+    blocks = [b.strip() for b in current_script_for_bu.split("\n\n") if b.strip()]
+    if len(blocks) <= 2:
+        blocks = [b.strip() for b in current_script_for_bu.split("\n") if b.strip()]
 
-        # セッション: 選択済みブロックindexリスト
-        if "sg_brushup_checked" not in st.session_state:
-            st.session_state["sg_brushup_checked"] = []
+    # セッション: 選択済みブロックindexリスト
+    if "sg_brushup_checked" not in st.session_state:
+        st.session_state["sg_brushup_checked"] = []
 
-        st.markdown("**① 改善したいブロックを選択（複数可）**")
-        new_checked = []
-        for bi, block in enumerate(blocks):
-            is_checked = bi in st.session_state["sg_brushup_checked"]
-            col_chk, col_blk = st.columns([1, 15])
-            with col_chk:
-                checked = st.checkbox("", value=is_checked, key=f"sg_blk_chk_{bi}", label_visibility="collapsed")
-            with col_blk:
-                bg = "#EFF6FF" if checked else "#FAFAFA"
-                border = "2px solid #3B82F6" if checked else "1px solid #E5E7EB"
-                # テキスト省略なし・全文表示
-                st.markdown(
-                    f'<div style="background:{bg};border:{border};border-radius:8px;'
-                    f'padding:10px 14px;font-size:0.85rem;line-height:1.6;color:#374151;'
-                    f'white-space:pre-wrap;word-break:break-word;">'
-                    f'{block}</div>',
-                    unsafe_allow_html=True,
+    st.markdown("**① 改善したいブロックを選択（複数可）**")
+    new_checked = []
+    for bi, block in enumerate(blocks):
+        is_checked = bi in st.session_state["sg_brushup_checked"]
+        col_chk, col_blk = st.columns([1, 15])
+        with col_chk:
+            checked = st.checkbox("", value=is_checked, key=f"sg_blk_chk_{bi}", label_visibility="collapsed")
+        with col_blk:
+            bg = "#EFF6FF" if checked else "#FAFAFA"
+            border = "2px solid #3B82F6" if checked else "1px solid #E5E7EB"
+            # テキスト省略なし・全文表示
+            st.markdown(
+                f'<div style="background:{bg};border:{border};border-radius:8px;'
+                f'padding:10px 14px;font-size:0.85rem;line-height:1.6;color:#374151;'
+                f'white-space:pre-wrap;word-break:break-word;">'
+                f'{block}</div>',
+                unsafe_allow_html=True,
+            )
+        if checked:
+            new_checked.append(bi)
+
+    st.session_state["sg_brushup_checked"] = new_checked
+
+    # 選択中ブロックを取得（インデックスも保持して前後コンテキスト用に使う）
+    selected_indices = [i for i in new_checked if i < len(blocks)]
+    selected_blocks = [blocks[i] for i in selected_indices]
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── 選択中ブロック表示 + 方向性 ──
+    if selected_blocks:
+        combined_preview = "\n\n".join(selected_blocks)
+        st.markdown(
+            f'<div style="background:#EFF6FF;border:2px solid #3B82F6;border-radius:10px;'
+            f'padding:12px 16px;margin-bottom:12px;">'
+            f'<div style="font-size:0.75rem;color:#1D4ED8;font-weight:600;margin-bottom:6px;">'
+            f'選択中のブロック（{len(selected_blocks)}件）</div>'
+            f'<div style="font-size:0.88rem;color:#1E3A5F;line-height:1.7;white-space:pre-wrap;">'
+            f'{combined_preview}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        col_preset, col_n = st.columns([3, 1])
+        with col_preset:
+            # ── プリセット読み込み（Supabase永続化） ──
+            try:
+                from memory_manager import get_brushup_presets
+                _loaded_presets = get_brushup_presets(script_type)
+            except Exception:
+                _loaded_presets = [
+                    "別のニュアンスで書き直す", "もっと感情的・共感的に",
+                    "より簡潔にまとめる", "インパクトを強くする",
+                ]
+            BRUSHUP_PRESETS = _loaded_presets + ["カスタム指示を入力..."]
+
+            preset = st.selectbox("② 改善の方向性", BRUSHUP_PRESETS, key="sg_brushup_preset")
+            if preset == "カスタム指示を入力...":
+                custom_inst = st.text_input(
+                    "具体的な指示",
+                    placeholder="例：もっと驚きのある書き出しにして",
+                    key="sg_brushup_custom",
                 )
-            if checked:
-                new_checked.append(bi)
+                brushup_instruction = custom_inst if custom_inst else "より良い表現に書き直す"
+            else:
+                brushup_instruction = preset
 
-        st.session_state["sg_brushup_checked"] = new_checked
-
-        # 選択中ブロックを取得（インデックスも保持して前後コンテキスト用に使う）
-        selected_indices = [i for i in new_checked if i < len(blocks)]
-        selected_blocks = [blocks[i] for i in selected_indices]
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # ── 選択中ブロック表示 + 方向性 ──
-        if selected_blocks:
-            combined_preview = "\n\n".join(selected_blocks)
-            st.markdown(
-                f'<div style="background:#EFF6FF;border:2px solid #3B82F6;border-radius:10px;'
-                f'padding:12px 16px;margin-bottom:12px;">'
-                f'<div style="font-size:0.75rem;color:#1D4ED8;font-weight:600;margin-bottom:6px;">'
-                f'選択中のブロック（{len(selected_blocks)}件）</div>'
-                f'<div style="font-size:0.88rem;color:#1E3A5F;line-height:1.7;white-space:pre-wrap;">'
-                f'{combined_preview}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-            col_preset, col_n = st.columns([3, 1])
-            with col_preset:
-                # ── プリセット読み込み（Supabase永続化） ──
-                try:
-                    from memory_manager import get_brushup_presets
-                    _loaded_presets = get_brushup_presets(script_type)
-                except Exception:
-                    _loaded_presets = [
-                        "別のニュアンスで書き直す", "もっと感情的・共感的に",
-                        "より簡潔にまとめる", "インパクトを強くする",
-                    ]
-                BRUSHUP_PRESETS = _loaded_presets + ["カスタム指示を入力..."]
-
-                preset = st.selectbox("② 改善の方向性", BRUSHUP_PRESETS, key="sg_brushup_preset")
-                if preset == "カスタム指示を入力...":
-                    custom_inst = st.text_input(
-                        "具体的な指示",
-                        placeholder="例：もっと驚きのある書き出しにして",
-                        key="sg_brushup_custom",
+            # ── 方向性を管理するエクスパンダー ──
+            with st.expander("⚙️ 方向性の選択肢を管理する"):
+                st.caption("選択肢の追加・削除ができます。変更はSupabaseに保存されます。")
+                # 追加
+                col_new, col_add = st.columns([4, 1])
+                with col_new:
+                    new_preset_text = st.text_input(
+                        "新しい方向性を追加",
+                        placeholder="例：関西弁に変換する",
+                        key="sg_brushup_new_preset",
+                        label_visibility="collapsed",
                     )
-                    brushup_instruction = custom_inst if custom_inst else "より良い表現に書き直す"
-                else:
-                    brushup_instruction = preset
-
-                # ── 方向性を管理するエクスパンダー ──
-                with st.expander("⚙️ 方向性の選択肢を管理する"):
-                    st.caption("選択肢の追加・削除ができます。変更はSupabaseに保存されます。")
-                    # 追加
-                    col_new, col_add = st.columns([4, 1])
-                    with col_new:
-                        new_preset_text = st.text_input(
-                            "新しい方向性を追加",
-                            placeholder="例：関西弁に変換する",
-                            key="sg_brushup_new_preset",
-                            label_visibility="collapsed",
-                        )
-                    with col_add:
-                        if st.button("追加", key="sg_brushup_add_preset", use_container_width=True):
-                            if new_preset_text.strip():
-                                try:
-                                    from memory_manager import get_brushup_presets, save_brushup_presets
-                                    current_presets = get_brushup_presets(script_type)
-                                    if new_preset_text.strip() not in current_presets:
-                                        current_presets.append(new_preset_text.strip())
-                                        save_brushup_presets(current_presets, script_type)
-                                        st.success("追加しました")
-                                        st.rerun()
-                                except Exception as e:
-                                    st.error(f"保存エラー: {e}")
-                    # 現在の一覧と削除ボタン
-                    st.markdown("**現在の選択肢：**")
-                    for pi, p in enumerate(_loaded_presets):
-                        col_pl, col_pd = st.columns([5, 1])
-                        with col_pl:
-                            st.markdown(
-                                f'<div style="font-size:0.85rem;padding:4px 8px;'
-                                f'background:#F8FAFC;border-radius:6px;margin:2px 0;">{p}</div>',
-                                unsafe_allow_html=True,
-                            )
-                        with col_pd:
-                            if st.button("削除", key=f"sg_del_preset_{pi}", use_container_width=True):
-                                try:
-                                    from memory_manager import get_brushup_presets, save_brushup_presets
-                                    updated = [x for x in get_brushup_presets(script_type) if x != p]
-                                    save_brushup_presets(updated, script_type)
+                with col_add:
+                    if st.button("追加", key="sg_brushup_add_preset", use_container_width=True):
+                        if new_preset_text.strip():
+                            try:
+                                from memory_manager import get_brushup_presets, save_brushup_presets
+                                current_presets = get_brushup_presets(script_type)
+                                if new_preset_text.strip() not in current_presets:
+                                    current_presets.append(new_preset_text.strip())
+                                    save_brushup_presets(current_presets, script_type)
+                                    st.success("追加しました")
                                     st.rerun()
-                                except Exception as e:
-                                    st.error(f"削除エラー: {e}")
-
-            with col_n:
-                n_cands = st.radio("③ 候補数", [2, 3, 4], index=1, horizontal=False, key="sg_brushup_n")
-
-            if st.button("🪄 候補を生成する", type="primary", use_container_width=True, key="sg_brushup_btn"):
-                with st.spinner(f"AIが{len(selected_blocks)}ブロック分の候補を並列生成中..."):
-                    try:
-                        from script_crew import generate_brushup_candidates
-                        import concurrent.futures as _cf
-
-                        def _gen(block_text):
-                            cands = generate_brushup_candidates(
-                                target_text=block_text,
-                                instruction=brushup_instruction,
-                                n_candidates=n_cands,
-                                script_type=script_type,
-                                model=model_id,
-                            )
-                            return {"original": block_text, "original_before": block_text, "candidates": cands, "applied": False}
-
-                        with _cf.ThreadPoolExecutor(max_workers=len(selected_blocks)) as _ex:
-                            per_block = list(_ex.map(_gen, selected_blocks))
-
-                        st.session_state["sg_brushup_per_block"] = per_block
-                        st.session_state["sg_brushup_candidates"] = []   # 旧キーをクリア
-                    except Exception as e:
-                        st.error(f"生成エラー: {e}")
-
-        # ── 候補表示（ブロックごとに独立表示・個別差し替え）──
-        per_block = st.session_state.get("sg_brushup_per_block", [])
-
-        if per_block:
-            st.markdown("---")
-            st.markdown(
-                '<div style="background:linear-gradient(135deg,#EEF2FF,#F5F3FF);'
-                'border-radius:12px;padding:10px 18px;margin-bottom:18px;border:1px solid #C7D2FE;">'
-                '<div style="font-weight:700;color:#3730A3;font-size:0.92rem;">🪄 全体の流れを確認しながら候補を選んでください</div>'
-                '<div style="color:#4338CA;font-size:0.8rem;margin-top:3px;">'
-                '変更対象のブロックごとに候補が表示されます。ラジオで選択 → 最後に「差し替える」で確定。</div></div>',
-                unsafe_allow_html=True,
-            )
-
-            import re as _re2
-
-            # 全文をブロック分割してインライン表示
-            full_script = st.session_state.sg_edited_draft
-            all_paragraphs = [p.strip() for p in full_script.split("\n\n") if p.strip()]
-
-            # per_block の original をキーにしたルックアップ（テキスト → (index, info)）
-            orig_lookup = {b["original"].strip(): (bi, b) for bi, b in enumerate(per_block)}
-
-            for para_i, para_text in enumerate(all_paragraphs):
-                if para_text in orig_lookup:
-                    bi, block_info = orig_lookup[para_text]
-                    block_cands = block_info["candidates"]
-                    applied     = block_info["applied"]
-
-                    if applied:
-                        # 差し替え済みは通常テキストとして表示
+                            except Exception as e:
+                                st.error(f"保存エラー: {e}")
+                # 現在の一覧と削除ボタン
+                st.markdown("**現在の選択肢：**")
+                for pi, p in enumerate(_loaded_presets):
+                    col_pl, col_pd = st.columns([5, 1])
+                    with col_pl:
                         st.markdown(
-                            f'<div style="padding:8px 14px;margin:2px 0;font-size:0.86rem;'
-                            f'color:#374151;line-height:1.7;white-space:pre-wrap;">{para_text}</div>',
+                            f'<div style="font-size:0.85rem;padding:4px 8px;'
+                            f'background:#F8FAFC;border-radius:6px;margin:2px 0;">{p}</div>',
                             unsafe_allow_html=True,
                         )
-                    else:
-                        # 変更前ブロック → オレンジ背景で表示
-                        st.markdown(
-                            f'<div style="background:#FFF7ED;border-left:3px solid #FB923C;'
-                            f'border-radius:0 8px 8px 0;padding:10px 14px;margin:4px 0 2px;'
-                            f'font-size:0.86rem;color:#374151;line-height:1.7;white-space:pre-wrap;">{para_text}</div>',
-                            unsafe_allow_html=True,
+                    with col_pd:
+                        if st.button("削除", key=f"sg_del_preset_{pi}", use_container_width=True):
+                            try:
+                                from memory_manager import get_brushup_presets, save_brushup_presets
+                                updated = [x for x in get_brushup_presets(script_type) if x != p]
+                                save_brushup_presets(updated, script_type)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"削除エラー: {e}")
+
+        with col_n:
+            n_cands = st.radio("③ 候補数", [2, 3, 4], index=1, horizontal=False, key="sg_brushup_n")
+
+        if st.button("🪄 候補を生成する", type="primary", use_container_width=True, key="sg_brushup_btn"):
+            with st.spinner(f"AIが{len(selected_blocks)}ブロック分の候補を並列生成中..."):
+                try:
+                    from script_crew import generate_brushup_candidates
+                    import concurrent.futures as _cf
+
+                    def _gen(block_text):
+                        cands = generate_brushup_candidates(
+                            target_text=block_text,
+                            instruction=brushup_instruction,
+                            n_candidates=n_cands,
+                            script_type=script_type,
+                            model=model_id,
                         )
+                        return {"original": block_text, "original_before": block_text, "candidates": cands, "applied": False}
 
-                        # 候補：小さいチェックボックスを左前に配置
-                        active_key = f"sg_active_cand_{bi}"
-                        active_i = st.session_state.get(active_key, 0)
-                        if active_i >= len(block_cands):
-                            active_i = 0
+                    with _cf.ThreadPoolExecutor(max_workers=len(selected_blocks)) as _ex:
+                        per_block = list(_ex.map(_gen, selected_blocks))
 
-                        for ci, cand in enumerate(block_cands):
-                            is_active = (ci == active_i)
-                            bg     = "#EFF6FF" if is_active else "#F9FAFB"
-                            border = "2px solid #3B82F6" if is_active else "1px solid #E5E7EB"
-                            col_chk, col_txt = st.columns([0.3, 9])
-                            with col_chk:
-                                checked = st.checkbox(
-                                    "", value=is_active,
-                                    key=f"sg_chk_{bi}_{ci}",
-                                )
-                                if checked and not is_active:
-                                    st.session_state[active_key] = ci
-                                    st.rerun()
-                            with col_txt:
-                                st.markdown(
-                                    f'<div style="background:{bg};border:{border};border-radius:8px;'
-                                    f'padding:10px 14px;margin:2px 0;">'
-                                    f'<div style="font-size:0.86rem;color:#1F2937;line-height:1.7;white-space:pre-wrap;">{cand}</div></div>',
-                                    unsafe_allow_html=True,
-                                )
+                    st.session_state["sg_brushup_per_block"] = per_block
+                    st.session_state["sg_brushup_candidates"] = []   # 旧キーをクリア
+                except Exception as e:
+                    st.error(f"生成エラー: {e}")
 
-                        # 差し替えボタン
-                        _, col_b = st.columns([18, 2])
-                        with col_b:
-                            if st.button("✅ 差し替える", type="primary",
-                                         key=f"sg_apply_b{bi}", use_container_width=True):
-                                chosen = st.session_state.get(active_key, 0)
-                                chosen_text = block_cands[chosen]
-                                current = st.session_state.sg_edited_draft
-                                if para_text in current:
-                                    new_script = current.replace(para_text, chosen_text, 1)
-                                    new_script = _re2.sub(r'\n{3,}', '\n\n', new_script).strip()
-                                    st.session_state.sg_edited_draft = new_script
-                                    st.session_state["sg_brushup_per_block"][bi]["applied"] = True
-                                    st.session_state["sg_brushup_per_block"][bi]["chosen"] = chosen_text
-                                    st.session_state["sg_brushup_per_block"][bi]["original"] = chosen_text
-                                    st.rerun()
-                                else:
-                                    st.warning(f"ブロック{bi+1}が見つかりませんでした。")
-                else:
-                    # 通常ブロック（変更なし）
+    # ── 候補表示（ブロックごとに独立表示・個別差し替え）──
+    per_block = st.session_state.get("sg_brushup_per_block", [])
+
+    if per_block:
+        st.markdown("---")
+        st.markdown(
+            '<div style="background:linear-gradient(135deg,#EEF2FF,#F5F3FF);'
+            'border-radius:12px;padding:10px 18px;margin-bottom:18px;border:1px solid #C7D2FE;">'
+            '<div style="font-weight:700;color:#3730A3;font-size:0.92rem;">🪄 全体の流れを確認しながら候補を選んでください</div>'
+            '<div style="color:#4338CA;font-size:0.8rem;margin-top:3px;">'
+            '変更対象のブロックごとに候補が表示されます。ラジオで選択 → 最後に「差し替える」で確定。</div></div>',
+            unsafe_allow_html=True,
+        )
+
+        import re as _re2
+
+        # 全文をブロック分割してインライン表示
+        full_script = st.session_state.sg_edited_draft
+        all_paragraphs = [p.strip() for p in full_script.split("\n\n") if p.strip()]
+
+        # per_block の original をキーにしたルックアップ（テキスト → (index, info)）
+        orig_lookup = {b["original"].strip(): (bi, b) for bi, b in enumerate(per_block)}
+
+        for para_i, para_text in enumerate(all_paragraphs):
+            if para_text in orig_lookup:
+                bi, block_info = orig_lookup[para_text]
+                block_cands = block_info["candidates"]
+                applied     = block_info["applied"]
+
+                if applied:
+                    # 差し替え済みは通常テキストとして表示
                     st.markdown(
                         f'<div style="padding:8px 14px;margin:2px 0;font-size:0.86rem;'
                         f'color:#374151;line-height:1.7;white-space:pre-wrap;">{para_text}</div>',
                         unsafe_allow_html=True,
                     )
+                else:
+                    # 変更前ブロック → オレンジ背景で表示
+                    st.markdown(
+                        f'<div style="background:#FFF7ED;border-left:3px solid #FB923C;'
+                        f'border-radius:0 8px 8px 0;padding:10px 14px;margin:4px 0 2px;'
+                        f'font-size:0.86rem;color:#374151;line-height:1.7;white-space:pre-wrap;">{para_text}</div>',
+                        unsafe_allow_html=True,
+                    )
 
-            st.markdown("<br>", unsafe_allow_html=True)
+                    # 候補：小さいチェックボックスを左前に配置
+                    active_key = f"sg_active_cand_{bi}"
+                    active_i = st.session_state.get(active_key, 0)
+                    if active_i >= len(block_cands):
+                        active_i = 0
 
-            # 全ブロック差し替え済みなら「台本完了」ボタンを表示
-            all_applied = all(b.get("applied", False) for b in per_block)
-            if all_applied:
+                    for ci, cand in enumerate(block_cands):
+                        is_active = (ci == active_i)
+                        bg     = "#EFF6FF" if is_active else "#F9FAFB"
+                        border = "2px solid #3B82F6" if is_active else "1px solid #E5E7EB"
+                        col_chk, col_txt = st.columns([0.3, 9])
+                        with col_chk:
+                            checked = st.checkbox(
+                                "", value=is_active,
+                                key=f"sg_chk_{bi}_{ci}",
+                            )
+                            if checked and not is_active:
+                                st.session_state[active_key] = ci
+                                st.rerun()
+                        with col_txt:
+                            st.markdown(
+                                f'<div style="background:{bg};border:{border};border-radius:8px;'
+                                f'padding:10px 14px;margin:2px 0;">'
+                                f'<div style="font-size:0.86rem;color:#1F2937;line-height:1.7;white-space:pre-wrap;">{cand}</div></div>',
+                                unsafe_allow_html=True,
+                            )
+
+                    # 差し替えボタン
+                    _, col_b = st.columns([18, 2])
+                    with col_b:
+                        if st.button("✅ 差し替える", type="primary",
+                                     key=f"sg_apply_b{bi}", use_container_width=True):
+                            chosen = st.session_state.get(active_key, 0)
+                            chosen_text = block_cands[chosen]
+                            current = st.session_state.sg_edited_draft
+                            if para_text in current:
+                                new_script = current.replace(para_text, chosen_text, 1)
+                                new_script = _re2.sub(r'\n{3,}', '\n\n', new_script).strip()
+                                st.session_state.sg_edited_draft = new_script
+                                st.session_state["sg_brushup_per_block"][bi]["applied"] = True
+                                st.session_state["sg_brushup_per_block"][bi]["chosen"] = chosen_text
+                                st.session_state["sg_brushup_per_block"][bi]["original"] = chosen_text
+                                st.rerun()
+                            else:
+                                st.warning(f"ブロック{bi+1}が見つかりませんでした。")
+            else:
+                # 通常ブロック（変更なし）
                 st.markdown(
-                    '<div style="background:linear-gradient(135deg,#F0FDF4,#ECFDF5);'
-                    'border:1px solid #A7F3D0;border-radius:12px;padding:14px 18px;margin-bottom:12px;">'
-                    '<div style="font-weight:700;color:#065F46;font-size:0.95rem;">🎉 すべての差し替えが完了しました</div>'
-                    '<div style="color:#047857;font-size:0.82rem;margin-top:4px;">'
-                    '「台本完了」を押すと、修正内容をAIが分析してNGパターンと改善ルールを学習します。次回以降の生成に自動反映されます。</div></div>',
+                    f'<div style="padding:8px 14px;margin:2px 0;font-size:0.86rem;'
+                    f'color:#374151;line-height:1.7;white-space:pre-wrap;">{para_text}</div>',
                     unsafe_allow_html=True,
                 )
-                if st.button("🎓 台本完了 — 学習データとして保存", type="primary",
-                             key="sg_brushup_done", use_container_width=True):
-                    with st.spinner("修正内容を分析・学習中..."):
-                        try:
-                            # 差し替えペアを収集
-                            replacements = [
-                                {"original_before": b["original_before"], "chosen": b.get("chosen", b["original"])}
-                                for b in per_block if b.get("applied")
-                            ]
-                            # NGパターンを抽出して保存
-                            from script_crew import analyze_brushup_replacements
-                            ng_patterns = analyze_brushup_replacements(replacements, script_type, model_id)
-                            if ng_patterns:
-                                from memory_manager import _load_history, _save_history, _type_data
-                                history = _load_history()
-                                td = _type_data(history, script_type)
-                                for p in ng_patterns:
-                                    if p not in td["bad_patterns"]:
-                                        td["bad_patterns"].append(p)
-                                td["bad_patterns"] = td["bad_patterns"][-30:]
-                                _save_history(history)
-
-                            # 改善ルールも統合（edit_improvements）
-                            from script_crew import analyze_edit_improvements, consolidate_improvement_rules
-                            from memory_manager import get_edit_improvements, save_edit_improvements
-                            combined_before = "\n\n".join(r["original_before"] for r in replacements)
-                            combined_after  = "\n\n".join(r["chosen"] for r in replacements)
-                            new_rules = analyze_edit_improvements(combined_before, combined_after, script_type, model_id)
-                            if new_rules:
-                                current_rules = get_edit_improvements(script_type)
-                                consolidated = consolidate_improvement_rules(current_rules, new_rules, script_type, model_id)
-                                save_edit_improvements(consolidated, script_type)
-
-                            # 完成台本を"good"として保存
-                            from memory_manager import save_script, record_theme_used
-                            theme = (st.session_state.sg_selected_themes[0]
-                                     if st.session_state.sg_selected_themes else "不明")
-                            angle_key = st.session_state.sg_current_angle[0]
-                            save_script(script=st.session_state.sg_edited_draft, rating="good",
-                                        theme=theme, script_type=script_type, angle=angle_key)
-                            record_theme_used(theme=theme, script_type=script_type, angle=angle_key)
-
-                            st.session_state["sg_brushup_learned_ng"] = ng_patterns
-                        except Exception as e:
-                            st.error(f"学習エラー: {e}")
-
-                    # 結果を表示してブラッシュアップ状態をクリア
-                    ng_list = st.session_state.pop("sg_brushup_learned_ng", [])
-                    st.session_state["sg_brushup_per_block"] = []
-                    st.session_state["sg_brushup_candidates"] = []
-                    st.session_state["sg_brushup_selected_blocks"] = []
-                    st.session_state["sg_brushup_checked"] = []
-                    if ng_list:
-                        ng_html = "".join(
-                            f'<div style="display:flex;gap:8px;margin-bottom:4px;">'
-                            f'<span style="color:#DC2626;flex-shrink:0;">✕</span>'
-                            f'<span style="font-size:0.83rem;color:#991B1B;">{p}</span></div>'
-                            for p in ng_list
-                        )
-                        st.markdown(
-                            f'<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;'
-                            f'padding:14px 18px;margin-top:12px;">'
-                            f'<div style="font-weight:700;color:#991B1B;margin-bottom:8px;">📚 学習したNGパターン（次回から回避）</div>'
-                            f'{ng_html}</div>',
-                            unsafe_allow_html=True,
-                        )
-                    st.success("✅ 学習完了！次回の台本生成に反映されます。")
-                    st.rerun()
-
-            col_cancel, _ = st.columns([2, 5])
-            with col_cancel:
-                if st.button("✕ キャンセル・やり直す", key="sg_brushup_clear"):
-                    st.session_state["sg_brushup_per_block"] = []
-                    st.session_state["sg_brushup_candidates"] = []
-                    st.session_state["sg_brushup_selected_blocks"] = []
-                    st.session_state["sg_brushup_checked"] = []
-                    st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔄 新しい台本を生成する", use_container_width=True):
-            reset_all()
-            st.rerun()
+
+        # 全ブロック差し替え済みなら「台本完了」ボタンを表示
+        all_applied = all(b.get("applied", False) for b in per_block)
+        if all_applied:
+            st.markdown(
+                '<div style="background:linear-gradient(135deg,#F0FDF4,#ECFDF5);'
+                'border:1px solid #A7F3D0;border-radius:12px;padding:14px 18px;margin-bottom:12px;">'
+                '<div style="font-weight:700;color:#065F46;font-size:0.95rem;">🎉 すべての差し替えが完了しました</div>'
+                '<div style="color:#047857;font-size:0.82rem;margin-top:4px;">'
+                '「台本完了」を押すと、修正内容をAIが分析してNGパターンと改善ルールを学習します。次回以降の生成に自動反映されます。</div></div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("🎓 台本完了 — 学習データとして保存", type="primary",
+                         key="sg_brushup_done", use_container_width=True):
+                with st.spinner("修正内容を分析・学習中..."):
+                    try:
+                        # 差し替えペアを収集
+                        replacements = [
+                            {"original_before": b["original_before"], "chosen": b.get("chosen", b["original"])}
+                            for b in per_block if b.get("applied")
+                        ]
+                        # NGパターンを抽出して保存
+                        from script_crew import analyze_brushup_replacements
+                        ng_patterns = analyze_brushup_replacements(replacements, script_type, model_id)
+                        if ng_patterns:
+                            from memory_manager import _load_history, _save_history, _type_data
+                            history = _load_history()
+                            td = _type_data(history, script_type)
+                            for p in ng_patterns:
+                                if p not in td["bad_patterns"]:
+                                    td["bad_patterns"].append(p)
+                            td["bad_patterns"] = td["bad_patterns"][-30:]
+                            _save_history(history)
+
+                        # 改善ルールも統合（edit_improvements）
+                        from script_crew import analyze_edit_improvements, consolidate_improvement_rules
+                        from memory_manager import get_edit_improvements, save_edit_improvements
+                        combined_before = "\n\n".join(r["original_before"] for r in replacements)
+                        combined_after  = "\n\n".join(r["chosen"] for r in replacements)
+                        new_rules = analyze_edit_improvements(combined_before, combined_after, script_type, model_id)
+                        if new_rules:
+                            current_rules = get_edit_improvements(script_type)
+                            consolidated = consolidate_improvement_rules(current_rules, new_rules, script_type, model_id)
+                            save_edit_improvements(consolidated, script_type)
+
+                        # 完成台本を"good"として保存
+                        from memory_manager import save_script, record_theme_used
+                        theme = (st.session_state.sg_selected_themes[0]
+                                 if st.session_state.sg_selected_themes else "不明")
+                        angle_key = st.session_state.sg_current_angle[0]
+                        save_script(script=st.session_state.sg_edited_draft, rating="good",
+                                    theme=theme, script_type=script_type, angle=angle_key)
+                        record_theme_used(theme=theme, script_type=script_type, angle=angle_key)
+
+                        st.session_state["sg_brushup_learned_ng"] = ng_patterns
+                    except Exception as e:
+                        st.error(f"学習エラー: {e}")
+
+                # 結果を表示してブラッシュアップ状態をクリア
+                ng_list = st.session_state.pop("sg_brushup_learned_ng", [])
+                st.session_state["sg_brushup_per_block"] = []
+                st.session_state["sg_brushup_candidates"] = []
+                st.session_state["sg_brushup_selected_blocks"] = []
+                st.session_state["sg_brushup_checked"] = []
+                if ng_list:
+                    ng_html = "".join(
+                        f'<div style="display:flex;gap:8px;margin-bottom:4px;">'
+                        f'<span style="color:#DC2626;flex-shrink:0;">✕</span>'
+                        f'<span style="font-size:0.83rem;color:#991B1B;">{p}</span></div>'
+                        for p in ng_list
+                    )
+                    st.markdown(
+                        f'<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;'
+                        f'padding:14px 18px;margin-top:12px;">'
+                        f'<div style="font-weight:700;color:#991B1B;margin-bottom:8px;">📚 学習したNGパターン（次回から回避）</div>'
+                        f'{ng_html}</div>',
+                        unsafe_allow_html=True,
+                    )
+                st.success("✅ 学習完了！次回の台本生成に反映されます。")
+                st.rerun()
+
+        col_cancel, _ = st.columns([2, 5])
+        with col_cancel:
+            if st.button("✕ キャンセル・やり直す", key="sg_brushup_clear"):
+                st.session_state["sg_brushup_per_block"] = []
+                st.session_state["sg_brushup_candidates"] = []
+                st.session_state["sg_brushup_selected_blocks"] = []
+                st.session_state["sg_brushup_checked"] = []
+                st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🔄 新しい台本を生成する", use_container_width=True):
+        reset_all()
+        st.rerun()
 
 
 # ─── フッター ─────────────────────────────────────────────────────────
