@@ -1142,6 +1142,45 @@ def auto_correct_from_discussion(original: str, discussion: list,
         return {"corrected": "", "changes": "", "error": str(e)}
 
 
+def generate_next_fc_message(script: str, messages: list) -> dict | None:
+    """討論の次の1メッセージだけを生成して返す（逐次チャット表示用）。
+    messagesは現在までの発言リスト。8件で討論完了→Noneを返す。
+    """
+    total = len(messages)
+    if total >= 8:
+        return None
+
+    round_num = total // 4 + 1   # 1 or 2
+    agent_idx = total % 4        # 0–3
+
+    agent_name, model_id, icon, side, color, bg = _DISCUSSION_AGENTS[agent_idx]
+    prompts = _R1_PROMPTS if round_num == 1 else _R2_PROMPTS
+
+    def _history():
+        if not messages:
+            return "（まだ発言なし）"
+        return "\n\n".join(
+            f"【{m['agent']}（Round{m['round']}）】{m['message']}"
+            for m in messages
+        )
+
+    prompt = prompts[agent_name].format(script=script[:2500], history=_history())
+    try:
+        text = _call_llm(prompt, model=model_id, temperature=0.75, max_tokens=600)
+    except Exception as e:
+        text = f"（応答エラー: {e}）"
+
+    return {
+        "agent": agent_name,
+        "icon": icon,
+        "side": side,
+        "color": color,
+        "bg": bg,
+        "message": text.strip(),
+        "round": round_num,
+    }
+
+
 # ── 追加修正指示による改訂 ────────────────────────────────────────────
 
 def revise_with_instruction(
