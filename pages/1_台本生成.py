@@ -1860,6 +1860,10 @@ elif step == 4:
         st.session_state["sg_last_learned_rules"] = []
 
     # ── タイトル自動生成 ──────────────────────────────────────────
+    # FC用に元の台本をここで保存（rerun前に確保）
+    if not st.session_state.get("sg_fc_original_draft"):
+        st.session_state.sg_fc_original_draft = draft
+
     titles = st.session_state.sg_titles
     if not titles:
         with st.spinner("タイトル候補を生成中..."):
@@ -1915,10 +1919,6 @@ elif step == 4:
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ── AI討論型ファクトチェック ─────────────────────────────────────────
-    # 元の台本を初回のみ保存（やり直し時のリストア用）
-    if not st.session_state.get("sg_fc_original_draft"):
-        st.session_state.sg_fc_original_draft = st.session_state.sg_edited_draft
-
     fc_messages = st.session_state.get("sg_fc_messages", [])
     fc_changes  = st.session_state.get("sg_fc_changes", "")
 
@@ -1939,15 +1939,15 @@ border-radius:16px;padding:22px 28px;margin:0 0 20px;color:white;">
 """, unsafe_allow_html=True)
 
         result_holder: dict = {}
+        # スレッド内ではst.session_stateにアクセスできないため事前にキャプチャ
+        _original_draft = st.session_state.sg_fc_original_draft
 
         def _run_discussion():
             try:
                 from script_crew import factcheck_discussion, auto_correct_from_discussion
-                msgs = factcheck_discussion(st.session_state.sg_fc_original_draft)
+                msgs = factcheck_discussion(_original_draft)
                 result_holder["messages"] = msgs
-                correction = auto_correct_from_discussion(
-                    st.session_state.sg_fc_original_draft, msgs
-                )
+                correction = auto_correct_from_discussion(_original_draft, msgs)
                 result_holder["corrected"] = correction.get("corrected", "")
                 result_holder["changes"]   = correction.get("changes", "")
             except Exception as e:
