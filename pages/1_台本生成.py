@@ -1840,6 +1840,168 @@ elif step == 4:
                 )
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── AI討論型ファクトチェック ─────────────────────────────────────────
+    # 元の台本を初回のみ保存（やり直し時のリストア用）
+    if not st.session_state.get("sg_fc_original_draft"):
+        st.session_state.sg_fc_original_draft = st.session_state.sg_edited_draft
+
+    fc_messages = st.session_state.get("sg_fc_messages", [])
+    fc_changes  = st.session_state.get("sg_fc_changes", "")
+
+    if not fc_messages:
+        # ── 討論・修正 実行フェーズ ──────────────────────────────────
+        st.markdown("""
+<div style="background:linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%);
+border-radius:16px;padding:22px 28px;margin:0 0 20px;color:white;">
+<h4 style="margin:0 0 8px;font-size:1.1rem;">🤖 AI討論型ファクトチェック</h4>
+<p style="margin:0;opacity:.85;font-size:.87rem;line-height:1.7;">
+4つのAIが順番に台本を読み合わせ、問題点を議論します。<br>
+討論が終わったら、全指摘を反映した修正版台本が自動生成されます。
+</p>
+<div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">
+<span style="background:rgba(255,255,255,.15);border-radius:6px;padding:3px 10px;font-size:.78rem;">🟣 Claude → 🟢 ChatGPT → ⚫ Grok → 🔵 Gemini（×2ラウンド）</span>
+</div>
+</div>
+""", unsafe_allow_html=True)
+
+        result_holder: dict = {}
+
+        def _run_discussion():
+            try:
+                from script_crew import factcheck_discussion, auto_correct_from_discussion
+                msgs = factcheck_discussion(st.session_state.sg_fc_original_draft)
+                result_holder["messages"] = msgs
+                correction = auto_correct_from_discussion(
+                    st.session_state.sg_fc_original_draft, msgs
+                )
+                result_holder["corrected"] = correction.get("corrected", "")
+                result_holder["changes"]   = correction.get("changes", "")
+            except Exception as e:
+                result_holder["error"] = str(e)
+
+        t_disc = threading.Thread(target=_run_discussion, daemon=True)
+        t_disc.start()
+
+        prog      = st.progress(0)
+        status_ph = st.empty()
+        elapsed   = 0
+
+        AGENT_STAGES = [
+            ("🟣 Claude",  "Round 1 — 問題発見"),
+            ("🟢 ChatGPT", "Round 1 — 検討・補足"),
+            ("⚫ Grok",    "Round 1 — 補足・反論"),
+            ("🔵 Gemini",  "Round 1 — 整理・優先順位"),
+            ("🟣 Claude",  "Round 2 — 修正提案"),
+            ("🟢 ChatGPT", "Round 2 — 合意形成"),
+            ("⚫ Grok",    "Round 2 — 最終指摘"),
+            ("🔵 Gemini",  "Round 2 — 討論の締め"),
+            ("⚙️",         "討論結果を台本に反映中..."),
+        ]
+        while t_disc.is_alive():
+            elapsed += 1
+            pct = min(88, int(elapsed / 95 * 88))
+            prog.progress(pct)
+            stage_idx = min(elapsed // 10, len(AGENT_STAGES) - 1)
+            agent, stage = AGENT_STAGES[stage_idx]
+            dots = "." * ((elapsed % 3) + 1)
+            status_ph.info(f"{agent} が発言中{dots}　　{stage}")
+            time.sleep(1)
+        t_disc.join()
+        prog.progress(100)
+        status_ph.empty()
+
+        if "error" in result_holder:
+            st.error(f"FC討論エラー: {result_holder['error']}")
+        else:
+            st.session_state.sg_fc_messages  = result_holder.get("messages", [])
+            st.session_state.sg_fc_corrected = result_holder.get("corrected", "")
+            st.session_state.sg_fc_changes   = result_holder.get("changes", "")
+            if result_holder.get("corrected"):
+                st.session_state.sg_edited_draft = result_holder["corrected"]
+            st.rerun()
+
+    else:
+        # ── 討論完了 → チャットバブル表示 ─────────────────────────────
+        col_fc_h, col_fc_btn = st.columns([4, 1])
+        with col_fc_h:
+            st.markdown("### 💬 AI ファクトチェック討論")
+        with col_fc_btn:
+            if st.button("🔄 やり直す", key="redo_fc",
+                         help="討論をリセットして元の台本から再実行します"):
+                st.session_state.sg_fc_messages  = []
+                st.session_state.sg_fc_corrected = ""
+                st.session_state.sg_fc_changes   = ""
+                if st.session_state.get("sg_fc_original_draft"):
+                    st.session_state.sg_edited_draft = st.session_state.sg_fc_original_draft
+                st.session_state.sg_fc_original_draft = ""
+                st.rerun()
+
+        st.caption("4つのAIが2ラウンドの討論を行い、全指摘を反映した修正版台本を自動生成しました")
+
+        # チャットバブル
+        prev_round = None
+        for msg in fc_messages:
+            rnd = msg.get("round", 1)
+            if rnd != prev_round:
+                label = "Round 1 — 問題発見フェーズ" if rnd == 1 else "Round 2 — 修正提案フェーズ"
+                st.markdown(
+                    f'<div style="text-align:center;margin:20px 0 10px;font-size:.78rem;'
+                    f'font-weight:700;color:#6B7280;letter-spacing:.1em;">─── {label} ───</div>',
+                    unsafe_allow_html=True,
+                )
+                prev_round = rnd
+
+            agent   = msg["agent"]
+            icon    = msg["icon"]
+            side    = msg["side"]
+            color   = msg["color"]
+            bg      = msg["bg"]
+            msg_html = msg["message"].replace("\n", "<br>")
+
+            if side == "right":
+                bubble = (
+                    f'<div style="display:flex;justify-content:flex-end;margin:10px 0;">'
+                    f'<div style="max-width:74%;background:{bg};'
+                    f'border-radius:18px 18px 4px 18px;padding:14px 18px;'
+                    f'box-shadow:0 2px 12px rgba(0,0,0,.07);border:1px solid {color}44;">'
+                    f'<div style="font-weight:700;color:{color};margin-bottom:7px;'
+                    f'text-align:right;font-size:.86rem;">{agent} {icon}</div>'
+                    f'<div style="font-size:.85rem;line-height:1.75;color:#1F2937;">{msg_html}</div>'
+                    f'</div></div>'
+                )
+            else:
+                bubble = (
+                    f'<div style="display:flex;justify-content:flex-start;margin:10px 0;">'
+                    f'<div style="max-width:74%;background:{bg};'
+                    f'border-radius:18px 18px 18px 4px;padding:14px 18px;'
+                    f'box-shadow:0 2px 12px rgba(0,0,0,.07);border:1px solid {color}44;">'
+                    f'<div style="font-weight:700;color:{color};margin-bottom:7px;'
+                    f'font-size:.86rem;">{icon} {agent}</div>'
+                    f'<div style="font-size:.85rem;line-height:1.75;color:#1F2937;">{msg_html}</div>'
+                    f'</div></div>'
+                )
+            st.markdown(bubble, unsafe_allow_html=True)
+
+        # 修正箇所サマリー
+        if fc_changes:
+            st.markdown("<br>", unsafe_allow_html=True)
+            with st.expander("📋 討論で合意した修正箇所（元表現 → 修正後）", expanded=False):
+                for line in fc_changes.split("\n"):
+                    if line.strip():
+                        st.markdown(line)
+
+        # 修正済みバナー
+        st.markdown("""
+<div style="background:linear-gradient(135deg,#ECFDF5 0%,#F0FDF4 100%);
+border:1px solid #6EE7B7;border-radius:12px;padding:12px 18px;margin:16px 0;
+display:flex;align-items:center;gap:10px;">
+<span style="font-size:1.1rem;">✅</span>
+<span style="font-weight:600;color:#065F46;font-size:.88rem;">
+AI討論の指摘を全て反映した修正版台本が下記に自動適用されています
+</span>
+</div>
+""", unsafe_allow_html=True)
+
     st.markdown("---")
 
     # ─ 完成台本 ＆ 最終調整 ──────────────────────────────────────
