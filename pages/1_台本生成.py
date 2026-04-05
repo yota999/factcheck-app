@@ -618,6 +618,100 @@ def _init():
 
 _init()
 
+
+# ─── マルチエージェント議論UIレンダリング（共通ヘルパー） ─────────────────
+_ROUND_LABELS = {
+    1: ("🔍", "ラウンド1 — 問題点・弱点の指摘",    "#374151"),
+    2: ("💡", "ラウンド2 — 具体的な改善案の提示",  "#1E3A5F"),
+    3: ("🔬", "ラウンド3 — さらに深掘り・追加批評", "#1A3A2A"),
+    4: ("🎯", "ラウンド4 — 最終まとめ・断言",       "#3B1A4A"),
+}
+
+def _render_debate_ui(
+    debate_results: list,
+    state_key: str,
+    regen_label: str,
+    on_regen,          # callable: regen_label ボタン押下時に呼ぶ関数
+    close_key: str,
+):
+    """
+    マルチエージェント議論のチャットバブルUIを描画する共通関数。
+
+    Args:
+        debate_results: multi_agent_debate()の戻り値リスト
+        state_key:      session_stateのキー（閉じるボタンで []にする）
+        regen_label:    再生成ボタンのラベル
+        on_regen:       再生成ボタン押下時のコールバック（debateフィードバック文字列を引数に取る）
+        close_key:      閉じるボタンのwidgetキー
+    """
+    col_hdr, col_close = st.columns([4, 1])
+    with col_hdr:
+        total_rounds = max((d.get("round", 1) for d in debate_results), default=1)
+        st.markdown(
+            f'<div style="background:#1F2937;border-radius:12px;padding:12px 18px;">'
+            f'<div style="font-size:0.85rem;font-weight:700;color:#F9FAFB;">💬 AIたちの議論（{total_rounds}ラウンド）</div>'
+            f'<div style="font-size:0.74rem;color:#9CA3AF;margin-top:2px;">'
+            + " → ".join(
+                f'R{r}: {_ROUND_LABELS[r][1].split(" — ")[1]}'
+                for r in range(1, total_rounds + 1) if r in _ROUND_LABELS
+            )
+            + '</div></div>',
+            unsafe_allow_html=True,
+        )
+    with col_close:
+        if st.button("✕ 閉じる", key=close_key):
+            st.session_state[state_key] = []
+            st.rerun()
+
+    prev_round = 0
+    for dr in debate_results:
+        r = dr.get("round", 1)
+        if r != prev_round:
+            icon, label_text, bg_r = _ROUND_LABELS.get(r, ("💬", f"ラウンド{r}", "#374151"))
+            st.markdown(
+                f'<div style="background:{bg_r};border-radius:8px;padding:6px 14px;'
+                f'margin:12px 0 6px;font-size:0.75rem;font-weight:700;color:#E5E7EB;">'
+                f'{icon} {label_text}</div>',
+                unsafe_allow_html=True,
+            )
+            prev_round = r
+
+        msg_html = dr["text"].replace("\n", "<br>")
+        if dr["side"] == "left":
+            st.markdown(
+                f'<div style="display:flex;gap:10px;margin:8px 0;align-items:flex-start;">'
+                f'<div style="width:36px;height:36px;border-radius:50%;background:{dr["bg"]};'
+                f'border:2px solid {dr["color"]};display:flex;align-items:center;'
+                f'justify-content:center;font-size:1rem;flex-shrink:0;">{dr["icon"]}</div>'
+                f'<div style="background:{dr["bg"]};border:1px solid {dr["color"]}33;'
+                f'border-radius:4px 16px 16px 16px;padding:10px 14px;max-width:82%;">'
+                f'<div style="font-size:0.72rem;font-weight:700;color:{dr["color"]};margin-bottom:5px;">{dr["ai"]}</div>'
+                f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.7;">{msg_html}</div>'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f'<div style="display:flex;gap:10px;margin:8px 0;align-items:flex-start;flex-direction:row-reverse;">'
+                f'<div style="width:36px;height:36px;border-radius:50%;background:{dr["bg"]};'
+                f'border:2px solid {dr["color"]};display:flex;align-items:center;'
+                f'justify-content:center;font-size:1rem;flex-shrink:0;">{dr["icon"]}</div>'
+                f'<div style="background:{dr["bg"]};border:1px solid {dr["color"]}33;'
+                f'border-radius:16px 4px 16px 16px;padding:10px 14px;max-width:82%;">'
+                f'<div style="font-size:0.72rem;font-weight:700;color:{dr["color"]};margin-bottom:5px;text-align:right;">{dr["ai"]}</div>'
+                f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.7;">{msg_html}</div>'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button(regen_label, type="primary", key=f"{state_key}_regen_btn", use_container_width=True):
+        feedback = "\n".join(
+            f"[{d['ai']} R{d.get('round', 1)}] {d['text']}" for d in debate_results
+        )
+        on_regen(feedback)
+
+
 def reset_all():
     for k in list(st.session_state.keys()):
         if k.startswith("sg_"):
@@ -1124,7 +1218,7 @@ elif step == 1:
 
         # 議論がまだなければ自動スタート
         if not debate_results_t and st.session_state.sg_themes:
-            with st.spinner("🤖 AIたちが議論中... Claude → ChatGPT → Gemini → Grok（2ラウンド・約60秒）"):
+            with st.spinner("🤖 AIたちが議論中... Claude → ChatGPT → Gemini → Grok（4ラウンド・約90秒）"):
                 try:
                     from script_crew import multi_agent_debate
                     debate_results_t = multi_agent_debate(
@@ -1136,67 +1230,7 @@ elif step == 1:
                     st.error(f"議論エラー: {e}")
 
         if debate_results_t:
-            col_debate_hdr, col_debate_close = st.columns([4, 1])
-            with col_debate_hdr:
-                st.markdown(
-                    '<div style="background:#1F2937;border-radius:12px;padding:12px 18px;">'
-                    '<div style="font-size:0.85rem;font-weight:700;color:#F9FAFB;">💬 AIたちの議論（2ラウンド）</div>'
-                    '<div style="font-size:0.74rem;color:#9CA3AF;margin-top:2px;">R1: 問題点の指摘 → R2: 具体的な改善案の提示</div>'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
-            with col_debate_close:
-                if st.button("✕ 閉じる", key="sg_theme_debate_close"):
-                    st.session_state["sg_theme_debate"] = []
-                    st.rerun()
-
-            prev_round = 0
-            for dr in debate_results_t:
-                r = dr.get("round", 1)
-                if r != prev_round:
-                    label = "🔍 ラウンド1 — 問題点・弱点の指摘" if r == 1 else "💡 ラウンド2 — 具体的な改善案の提示"
-                    bg_r = "#374151" if r == 1 else "#1E3A5F"
-                    st.markdown(
-                        f'<div style="background:{bg_r};border-radius:8px;padding:6px 14px;'
-                        f'margin:12px 0 6px;font-size:0.75rem;font-weight:700;color:#E5E7EB;">{label}</div>',
-                        unsafe_allow_html=True,
-                    )
-                    prev_round = r
-                msg_html = dr["text"].replace("\n", "<br>")
-                if dr["side"] == "left":
-                    st.markdown(
-                        f'<div style="display:flex;gap:10px;margin:8px 0;align-items:flex-start;">'
-                        f'<div style="width:36px;height:36px;border-radius:50%;background:{dr["bg"]};'
-                        f'border:2px solid {dr["color"]};display:flex;align-items:center;'
-                        f'justify-content:center;font-size:1rem;flex-shrink:0;">{dr["icon"]}</div>'
-                        f'<div style="background:{dr["bg"]};border:1px solid {dr["color"]}33;'
-                        f'border-radius:4px 16px 16px 16px;padding:10px 14px;max-width:82%;">'
-                        f'<div style="font-size:0.72rem;font-weight:700;color:{dr["color"]};margin-bottom:5px;">{dr["ai"]}</div>'
-                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.7;">{msg_html}</div>'
-                        f'</div></div>',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.markdown(
-                        f'<div style="display:flex;gap:10px;margin:8px 0;align-items:flex-start;flex-direction:row-reverse;">'
-                        f'<div style="width:36px;height:36px;border-radius:50%;background:{dr["bg"]};'
-                        f'border:2px solid {dr["color"]};display:flex;align-items:center;'
-                        f'justify-content:center;font-size:1rem;flex-shrink:0;">{dr["icon"]}</div>'
-                        f'<div style="background:{dr["bg"]};border:1px solid {dr["color"]}33;'
-                        f'border-radius:16px 4px 16px 16px;padding:10px 14px;max-width:82%;">'
-                        f'<div style="font-size:0.72rem;font-weight:700;color:{dr["color"]};margin-bottom:5px;text-align:right;">{dr["ai"]}</div>'
-                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.7;">{msg_html}</div>'
-                        f'</div></div>',
-                        unsafe_allow_html=True,
-                    )
-
-            # 議論を反映して再生成ボタン
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("🔄 AIの議論を反映して40テーマを再生成", type="primary",
-                         key="sg_theme_regen_from_debate", use_container_width=True):
-                debate_feedback = "\n".join(
-                    f"[{d['ai']} R{d.get('round',1)}] {d['text']}" for d in debate_results_t
-                )
+            def _theme_regen(feedback: str):
                 try:
                     from memory_manager import get_used_themes, get_next_angle, get_next_ai, get_rejected_themes
                     used_themes = get_used_themes(st.session_state.sg_script_type)
@@ -1216,7 +1250,7 @@ elif step == 1:
                             used_themes=used_themes, rejected_themes=rejected_themes,
                             trends=trends_d, video_trends=vt_d, youtube_trends=yt_d,
                             angle_name=angle_name_d, model=model_id_d,
-                            debate_feedback=debate_feedback,
+                            debate_feedback=feedback,
                         )
                         st.session_state.sg_themes = new_themes
                         st.session_state.sg_selected_themes = []
@@ -1224,6 +1258,14 @@ elif step == 1:
                         st.rerun()
                     except Exception as e:
                         st.error(f"再生成エラー: {e}")
+
+            _render_debate_ui(
+                debate_results=debate_results_t,
+                state_key="sg_theme_debate",
+                regen_label="🔄 AIの議論を反映して40テーマを再生成",
+                on_regen=_theme_regen,
+                close_key="sg_theme_debate_close",
+            )
 
 
 
@@ -1503,7 +1545,7 @@ elif step == 2:
         debate_results_i = st.session_state.get("sg_idea_debate", [])
 
         if not debate_results_i and st.session_state.sg_ideas:
-            with st.spinner("🤖 AIたちが議論中... Claude → ChatGPT → Gemini → Grok（2ラウンド・約60秒）"):
+            with st.spinner("🤖 AIたちが議論中... Claude → ChatGPT → Gemini → Grok（4ラウンド・約90秒）"):
                 try:
                     from script_crew import multi_agent_debate
                     debate_results_i = multi_agent_debate(
@@ -1515,67 +1557,7 @@ elif step == 2:
                     st.error(f"議論エラー: {e}")
 
         if debate_results_i:
-            col_idh, col_idc = st.columns([4, 1])
-            with col_idh:
-                st.markdown(
-                    '<div style="background:#1F2937;border-radius:12px;padding:12px 18px;">'
-                    '<div style="font-size:0.85rem;font-weight:700;color:#F9FAFB;">💬 AIたちの議論（2ラウンド）</div>'
-                    '<div style="font-size:0.74rem;color:#9CA3AF;margin-top:2px;">R1: 問題点の指摘 → R2: 具体的な改善案の提示</div>'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
-            with col_idc:
-                if st.button("✕ 閉じる", key="sg_idea_debate_close"):
-                    st.session_state["sg_idea_debate"] = []
-                    st.rerun()
-
-            prev_round_i = 0
-            for dr_i in debate_results_i:
-                r_i = dr_i.get("round", 1)
-                if r_i != prev_round_i:
-                    label_i = "🔍 ラウンド1 — 問題点・弱点の指摘" if r_i == 1 else "💡 ラウンド2 — 具体的な改善案の提示"
-                    bg_ri = "#374151" if r_i == 1 else "#1E3A5F"
-                    st.markdown(
-                        f'<div style="background:{bg_ri};border-radius:8px;padding:6px 14px;'
-                        f'margin:12px 0 6px;font-size:0.75rem;font-weight:700;color:#E5E7EB;">{label_i}</div>',
-                        unsafe_allow_html=True,
-                    )
-                    prev_round_i = r_i
-                msg_html_i = dr_i["text"].replace("\n", "<br>")
-                if dr_i["side"] == "left":
-                    st.markdown(
-                        f'<div style="display:flex;gap:10px;margin:8px 0;align-items:flex-start;">'
-                        f'<div style="width:36px;height:36px;border-radius:50%;background:{dr_i["bg"]};'
-                        f'border:2px solid {dr_i["color"]};display:flex;align-items:center;'
-                        f'justify-content:center;font-size:1rem;flex-shrink:0;">{dr_i["icon"]}</div>'
-                        f'<div style="background:{dr_i["bg"]};border:1px solid {dr_i["color"]}33;'
-                        f'border-radius:4px 16px 16px 16px;padding:10px 14px;max-width:82%;">'
-                        f'<div style="font-size:0.72rem;font-weight:700;color:{dr_i["color"]};margin-bottom:5px;">{dr_i["ai"]}</div>'
-                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.7;">{msg_html_i}</div>'
-                        f'</div></div>',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.markdown(
-                        f'<div style="display:flex;gap:10px;margin:8px 0;align-items:flex-start;flex-direction:row-reverse;">'
-                        f'<div style="width:36px;height:36px;border-radius:50%;background:{dr_i["bg"]};'
-                        f'border:2px solid {dr_i["color"]};display:flex;align-items:center;'
-                        f'justify-content:center;font-size:1rem;flex-shrink:0;">{dr_i["icon"]}</div>'
-                        f'<div style="background:{dr_i["bg"]};border:1px solid {dr_i["color"]}33;'
-                        f'border-radius:16px 4px 16px 16px;padding:10px 14px;max-width:82%;">'
-                        f'<div style="font-size:0.72rem;font-weight:700;color:{dr_i["color"]};margin-bottom:5px;text-align:right;">{dr_i["ai"]}</div>'
-                        f'<div style="font-size:0.83rem;color:#1F2937;line-height:1.7;">{msg_html_i}</div>'
-                        f'</div></div>',
-                        unsafe_allow_html=True,
-                    )
-
-            # 議論を反映して再生成ボタン
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("🔄 AIの議論を反映して40アイデアを再生成", type="primary",
-                         key="sg_idea_regen_from_debate", use_container_width=True):
-                debate_feedback_i = "\n".join(
-                    f"[{d['ai']} R{d.get('round',1)}] {d['text']}" for d in debate_results_i
-                )
+            def _idea_regen(feedback: str):
                 model_id_i = st.session_state.sg_current_ai[0]
                 angle_name_i = st.session_state.sg_current_angle[1]
                 try:
@@ -1592,7 +1574,7 @@ elif step == 2:
                             selected_themes=st.session_state.sg_selected_themes,
                             angle_name=angle_name_i, good_elements=good_elements_i,
                             rejected_ideas=rejected_ideas_i, model=model_id_i,
-                            debate_feedback=debate_feedback_i,
+                            debate_feedback=feedback,
                         )
                         st.session_state.sg_ideas = new_ideas
                         st.session_state.sg_selected_ideas = []
@@ -1600,6 +1582,14 @@ elif step == 2:
                         st.rerun()
                     except Exception as e:
                         st.error(f"再生成エラー: {e}")
+
+            _render_debate_ui(
+                debate_results=debate_results_i,
+                state_key="sg_idea_debate",
+                regen_label="🔄 AIの議論を反映して40アイデアを再生成",
+                on_regen=_idea_regen,
+                close_key="sg_idea_debate_close",
+            )
 
 
 
@@ -1925,13 +1915,17 @@ elif step == 4:
     # ── AI討論型ファクトチェック（リアルタイム逐次チャット） ────────────────
     _TOTAL_FC = 8  # 4AI × 2ラウンド
 
-    # エージェント情報（UIでの typing indicator 用）
+    # エージェント情報（順番・UI表示用）
     _FC_AGENTS = [
         {"name": "Claude",  "icon": "🟣", "side": "left",  "color": "#7C3AED", "bg": "#F5F3FF"},
         {"name": "ChatGPT", "icon": "🟢", "side": "right", "color": "#059669", "bg": "#ECFDF5"},
-        {"name": "Grok",    "icon": "⚫", "side": "left",  "color": "#374151", "bg": "#F3F4F6"},
-        {"name": "Gemini",  "icon": "🔵", "side": "right", "color": "#1D4ED8", "bg": "#EFF6FF"},
+        {"name": "Grok",    "icon": "⚫", "side": "right", "color": "#374151", "bg": "#F3F4F6"},
+        {"name": "Gemini",  "icon": "🔵", "side": "left",  "color": "#1D4ED8", "bg": "#EFF6FF"},
     ]
+    _FC_ROUND_LABELS = {
+        1: ("🔍", "Round 1 — 問題点・弱点の指摘",    "#1E3A5F"),
+        2: ("💡", "Round 2 — 具体的な改善案の提示",  "#1A3A2A"),
+    }
 
     fc_messages  = st.session_state.get("sg_fc_messages", [])
     fc_corrected = st.session_state.get("sg_fc_corrected", "")
@@ -1939,103 +1933,154 @@ elif step == 4:
     original_draft = st.session_state.get("sg_fc_original_draft", draft)
 
     # ─ ヘッダー + やり直しボタン ──────────────────────────────────────
+    n_done = len(fc_messages)
     col_fc_h, col_fc_btn = st.columns([4, 1])
     with col_fc_h:
-        n_done = len(fc_messages)
         if n_done < _TOTAL_FC:
-            prog_label = f"💬 AI ファクトチェック討論中 ({n_done}/{_TOTAL_FC})"
+            prog_label = f"💬 AIファクトチェック討論中... ({n_done}/{_TOTAL_FC})"
+            prog_color = "#F59E0B"
         elif not fc_corrected:
             prog_label = "⚙️ 修正版台本を生成中..."
+            prog_color = "#3B82F6"
         else:
-            prog_label = "✅ AI ファクトチェック討論 完了"
-        st.markdown(f"### {prog_label}")
+            prog_label = "✅ AIファクトチェック討論 完了"
+            prog_color = "#10B981"
+        st.markdown(
+            f'<div style="background:#1F2937;border-radius:12px;padding:14px 20px;">'
+            f'<div style="font-size:1rem;font-weight:800;color:{prog_color};">{prog_label}</div>'
+            f'<div style="font-size:0.74rem;color:#9CA3AF;margin-top:4px;">'
+            f'🟣 Claude（左）・🟢 ChatGPT（右）・⚫ Grok（右）・🔵 Gemini（左）の順で2ラウンド討論</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
     with col_fc_btn:
         if fc_messages and st.button("🔄 やり直す", key="redo_fc"):
             st.session_state.sg_fc_messages  = []
             st.session_state.sg_fc_corrected = ""
             st.session_state.sg_fc_changes   = ""
+            orig = st.session_state.get("sg_fc_original_draft", "")
+            if orig:
+                st.session_state.sg_edited_draft = orig
             st.session_state.sg_fc_original_draft = ""
-            if st.session_state.get("sg_fc_original_draft"):
-                st.session_state.sg_edited_draft = st.session_state["sg_fc_original_draft"]
             st.rerun()
 
-    if n_done == 0:
-        st.caption("🟣 Claude → 🟢 ChatGPT → ⚫ Grok → 🔵 Gemini の順で2ラウンド討論し、修正版台本を生成します")
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # ─ 既存メッセージをチャットバブルで描画 ─────────────────────────────
-    def _render_bubble(m: dict):
-        msg_html = m["message"].replace("\n", "<br>")
-        if m["side"] == "right":
-            st.markdown(
-                f'<div style="display:flex;justify-content:flex-end;margin:10px 0;">'
-                f'<div style="max-width:75%;background:{m["bg"]};'
-                f'border-radius:18px 18px 4px 18px;padding:14px 18px;'
-                f'box-shadow:0 2px 14px rgba(0,0,0,.08);border:1px solid {m["color"]}33;">'
-                f'<div style="font-weight:700;color:{m["color"]};margin-bottom:7px;'
-                f'text-align:right;font-size:.86rem;">{m["agent"]} {m["icon"]}</div>'
-                f'<div style="font-size:.85rem;line-height:1.8;color:#1F2937;">{msg_html}</div>'
-                f'</div></div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                f'<div style="display:flex;justify-content:flex-start;margin:10px 0;">'
-                f'<div style="max-width:75%;background:{m["bg"]};'
-                f'border-radius:18px 18px 18px 4px;padding:14px 18px;'
-                f'box-shadow:0 2px 14px rgba(0,0,0,.08);border:1px solid {m["color"]}33;">'
-                f'<div style="font-weight:700;color:{m["color"]};margin-bottom:7px;'
-                f'font-size:.86rem;">{m["icon"]} {m["agent"]}</div>'
-                f'<div style="font-size:.85rem;line-height:1.8;color:#1F2937;">{msg_html}</div>'
-                f'</div></div>',
-                unsafe_allow_html=True,
-            )
+    # ─ チャット吹き出し表示（全メッセージを単一HTMLで一括レンダリング） ──
+    def _build_fc_chat_html(messages: list, typing_next=None) -> str:
+        """
+        FC討論の全メッセージ＋タイピング中インジケーターを
+        暗背景コンテナで一括HTML化して返す。
+        typing_next: 次に発言するエージェント情報（生成中のみ）
+        """
+        parts = [
+            '<div style="background:#111827;border-radius:16px;padding:20px 24px;'
+            'margin:8px 0 16px;box-shadow:0 4px 24px rgba(0,0,0,.2);">'
+        ]
+        prev_round = None
+        for m in messages:
+            rnd = m.get("round", 1)
+            if rnd != prev_round:
+                icon_r, label_r, bg_r = _FC_ROUND_LABELS.get(rnd, ("💬", f"Round {rnd}", "#374151"))
+                parts.append(
+                    f'<div style="background:{bg_r};border-radius:8px;padding:6px 14px;'
+                    f'margin:{"4px" if prev_round is None else "18px"} 0 10px;'
+                    f'font-size:0.75rem;font-weight:700;color:#E5E7EB;">'
+                    f'{icon_r} {label_r}</div>'
+                )
+                prev_round = rnd
 
-    prev_round = None
-    for msg in fc_messages:
-        rnd = msg.get("round", 1)
-        if rnd != prev_round:
-            label = "─── Round 1　問題発見 ───" if rnd == 1 else "─── Round 2　修正提案 ───"
-            st.markdown(
-                f'<div style="text-align:center;margin:18px 0 8px;font-size:.76rem;'
-                f'font-weight:700;color:#9CA3AF;letter-spacing:.12em;">{label}</div>',
-                unsafe_allow_html=True,
-            )
-            prev_round = rnd
-        _render_bubble(msg)
+            msg_html = m["message"].replace("\n", "<br>").replace("'", "&#39;")
+            color = m["color"]
+            bg    = m["bg"]
+            icon  = m["icon"]
+            agent = m["agent"]
+
+            if m["side"] == "left":
+                parts.append(
+                    f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;">'
+                    f'<div style="width:38px;height:38px;border-radius:50%;background:{bg};'
+                    f'border:2px solid {color};display:flex;align-items:center;'
+                    f'justify-content:center;font-size:1.1rem;flex-shrink:0;">{icon}</div>'
+                    f'<div style="background:{bg};border:1px solid {color}44;'
+                    f'border-radius:4px 18px 18px 18px;padding:12px 16px;max-width:80%;">'
+                    f'<div style="font-size:0.72rem;font-weight:700;color:{color};margin-bottom:5px;">{agent}</div>'
+                    f'<div style="font-size:0.84rem;color:#1F2937;line-height:1.75;">{msg_html}</div>'
+                    f'</div></div>'
+                )
+            else:
+                parts.append(
+                    f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;flex-direction:row-reverse;">'
+                    f'<div style="width:38px;height:38px;border-radius:50%;background:{bg};'
+                    f'border:2px solid {color};display:flex;align-items:center;'
+                    f'justify-content:center;font-size:1.1rem;flex-shrink:0;">{icon}</div>'
+                    f'<div style="background:{bg};border:1px solid {color}44;'
+                    f'border-radius:18px 4px 18px 18px;padding:12px 16px;max-width:80%;">'
+                    f'<div style="font-size:0.72rem;font-weight:700;color:{color};margin-bottom:5px;text-align:right;">{agent}</div>'
+                    f'<div style="font-size:0.84rem;color:#1F2937;line-height:1.75;">{msg_html}</div>'
+                    f'</div></div>'
+                )
+
+        # タイピングインジケーター（生成中のみ）
+        if typing_next:
+            # 次のラウンドに切り替わるタイミングでラベル追加
+            next_rnd = (len(messages)) // 4 + 1
+            if next_rnd != prev_round and len(messages) % 4 == 0 and len(messages) > 0:
+                icon_r, label_r, bg_r = _FC_ROUND_LABELS.get(next_rnd, ("💬", f"Round {next_rnd}", "#374151"))
+                parts.append(
+                    f'<div style="background:{bg_r};border-radius:8px;padding:6px 14px;'
+                    f'margin:18px 0 10px;font-size:0.75rem;font-weight:700;color:#E5E7EB;">'
+                    f'{icon_r} {label_r}</div>'
+                )
+            t_color = typing_next["color"]
+            t_bg    = typing_next["bg"]
+            t_icon  = typing_next["icon"]
+            t_name  = typing_next["name"]
+            t_side  = typing_next["side"]
+            if t_side == "left":
+                parts.append(
+                    f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;opacity:0.7;">'
+                    f'<div style="width:38px;height:38px;border-radius:50%;background:{t_bg};'
+                    f'border:2px dashed {t_color};display:flex;align-items:center;'
+                    f'justify-content:center;font-size:1.1rem;flex-shrink:0;">{t_icon}</div>'
+                    f'<div style="background:{t_bg};border:1px dashed {t_color}88;'
+                    f'border-radius:4px 18px 18px 18px;padding:12px 16px;">'
+                    f'<div style="font-size:0.72rem;font-weight:700;color:{t_color};margin-bottom:5px;">{t_name}</div>'
+                    f'<div style="font-size:0.84rem;color:#6B7280;">入力中 ●●●</div>'
+                    f'</div></div>'
+                )
+            else:
+                parts.append(
+                    f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;flex-direction:row-reverse;opacity:0.7;">'
+                    f'<div style="width:38px;height:38px;border-radius:50%;background:{t_bg};'
+                    f'border:2px dashed {t_color};display:flex;align-items:center;'
+                    f'justify-content:center;font-size:1.1rem;flex-shrink:0;">{t_icon}</div>'
+                    f'<div style="background:{t_bg};border:1px dashed {t_color}88;'
+                    f'border-radius:18px 4px 18px 18px;padding:12px 16px;">'
+                    f'<div style="font-size:0.72rem;font-weight:700;color:{t_color};margin-bottom:5px;text-align:right;">{t_name}</div>'
+                    f'<div style="font-size:0.84rem;color:#6B7280;">入力中 ●●●</div>'
+                    f'</div></div>'
+                )
+
+        parts.append('</div>')
+        return "".join(parts)
 
     # ─ 次のメッセージを生成（討論中） ────────────────────────────────────
-    if len(fc_messages) < _TOTAL_FC:
-        next_idx  = len(fc_messages)
+    if n_done < _TOTAL_FC:
+        next_idx  = n_done
         next_info = _FC_AGENTS[next_idx % 4]
-        rnd_next  = next_idx // 4 + 1
 
-        # ラウンド区切り（まだ表示していなければ）
-        if rnd_next != prev_round and next_idx % 4 == 0 and next_idx > 0:
-            label = "─── Round 2　修正提案 ───"
-            st.markdown(
-                f'<div style="text-align:center;margin:18px 0 8px;font-size:.76rem;'
-                f'font-weight:700;color:#9CA3AF;letter-spacing:.12em;">{label}</div>',
-                unsafe_allow_html=True,
-            )
+        # 既存メッセージ＋タイピングインジケーターをまとめて表示（常に）
+        st.markdown(_build_fc_chat_html(fc_messages, typing_next=next_info),
+                    unsafe_allow_html=True)
 
-        # タイピングインジケーター（次のエージェント）
-        side_css = "flex-end" if next_info["side"] == "right" else "flex-start"
-        name_css = "text-align:right;" if next_info["side"] == "right" else ""
-        st.markdown(
-            f'<div style="display:flex;justify-content:{side_css};margin:10px 0;opacity:.65;">'
-            f'<div style="background:{next_info["bg"]};border-radius:18px;padding:12px 18px;'
-            f'border:1px dashed {next_info["color"]}55;">'
-            f'<div style="font-weight:700;color:{next_info["color"]};font-size:.84rem;{name_css}">'
-            f'{next_info["icon"]} {next_info["name"]}</div>'
-            f'<div style="color:#9CA3AF;font-size:.82rem;margin-top:5px;">入力中 ●●●</div>'
-            f'</div></div>',
-            unsafe_allow_html=True,
-        )
+        # タイマー表示
+        _timer = st.empty()
 
         # バックグラウンドで1メッセージ生成
         _result: dict = {}
-        _snap_msgs   = list(fc_messages)   # スレッド外でスナップショット
-        _snap_draft  = original_draft
+        _snap_msgs  = list(fc_messages)
+        _snap_draft = original_draft
 
         def _gen_one():
             try:
@@ -2046,9 +2091,7 @@ elif step == 4:
 
         _t = threading.Thread(target=_gen_one, daemon=True)
         _t.start()
-
         _elapsed = 0
-        _timer   = st.empty()
         while _t.is_alive():
             _elapsed += 1
             _timer.caption(f"⏱ {_elapsed}秒...")
@@ -2064,7 +2107,9 @@ elif step == 4:
 
     # ─ 討論完了 → 修正版台本を生成 ───────────────────────────────────────
     elif not fc_corrected:
-        with st.spinner("討論の内容を台本に反映しています（30〜60秒）..."):
+        # 全8件の吹き出しを表示
+        st.markdown(_build_fc_chat_html(fc_messages), unsafe_allow_html=True)
+        with st.spinner("🔧 AIたちの議論を台本に反映しています（30〜60秒）..."):
             try:
                 from script_crew import auto_correct_from_discussion
                 _corr = auto_correct_from_discussion(original_draft, list(fc_messages))
@@ -2076,8 +2121,11 @@ elif step == 4:
                 st.error(f"台本修正エラー: {e}")
         st.rerun()
 
-    # ─ 全完了 → 修正箇所サマリー ＆ バナー ──────────────────────────────
+    # ─ 全完了 → 吹き出し + 修正箇所サマリー ＆ バナー ──────────────────
     else:
+        # ★ 完了後も全8件の吹き出しを必ず表示
+        st.markdown(_build_fc_chat_html(fc_messages), unsafe_allow_html=True)
+
         if fc_changes:
             with st.expander("📋 討論で合意した修正箇所", expanded=False):
                 for line in fc_changes.split("\n"):
