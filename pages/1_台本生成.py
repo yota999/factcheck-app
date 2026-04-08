@@ -1086,7 +1086,7 @@ elif step == 1:
                     except Exception as e:
                         st.error(f"エラー: {e}")
         with col_next:
-            if st.button("アイデア20個を生成 →", key="sg_step1_next", type="primary", disabled=len(selected) == 0,
+            if st.button("アイデア40個を生成 →", key="sg_step1_next", type="primary", disabled=len(selected) == 0,
                          use_container_width=True):
                 # 丸数字を除去して内部データとして保存
                 st.session_state.sg_selected_themes = [_strip_num_t(x) for x in selected]
@@ -1099,7 +1099,7 @@ elif step == 1:
                 except Exception:
                     good_elements, rejected_ideas = [], []
 
-                with st.spinner("コンテンツアイデアを20個生成中..."):
+                with st.spinner("コンテンツアイデアを40個生成中..."):
                     try:
                         from script_crew import generate_ideas
                         ideas = generate_ideas(

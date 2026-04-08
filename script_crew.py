@@ -254,6 +254,14 @@ def generate_themes(
         ("expert_d", "現場の指導者だけが知っている裏ノウハウ型", "一般には出回らないトレーナー・指導者の実践知"),
     ]
 
+    # 重複しやすい汎用キーワード（プロンプトで明示的に禁止）
+    OVERUSED_KEYWORDS = [
+        "有酸素運動", "ランニング", "ウォーキング", "朝の運動", "朝に行う",
+        "筋肉痛", "歩き方", "走っても痩せない", "ランニングが痩せない",
+        "有酸素運動vs筋トレ", "立ち仕事が運動の代わり",
+    ]
+    overused_str = "・" + "\n・".join(OVERUSED_KEYWORDS)
+
     def _gen_one(slot_key: str, slot_name: str, slot_desc: str) -> str:
         prompt = f"""{persona}
 
@@ -268,12 +276,16 @@ def generate_themes(
 【NGテーマ（絶対に提案しないこと）】
 {rejected_str}
 
+【禁止キーワード（タイトルにもサブテキストにも一切使わないこと）】
+{overused_str}
+
 【参考トレンド】
 {trend_str}
 
 【必須ルール】
 ・切り口「{slot_name}」をそのまま活かしたテーマにすること
-・NGテーマと似たものは出さないこと
+・禁止キーワードと意味的に被るテーマ（言い換えも含む）は一切出さないこと
+・他の切り口で既に使われそうな汎用テーマ（有酸素/ウォーキング/朝活等）は絶対に避けること
 ・専門用語は使わず直感的な言葉にすること
 ・箇条書き3つは「具体的な事実・ホルモン名・数値・メカニズム名・行動」を含めること（「本当の理由」「正しい方法」など曖昧な表現は禁止）
 
@@ -287,19 +299,15 @@ def generate_themes(
             line = line.strip()
             if not line:
                 continue
-            # 番号付き行の番号を除去
             if len(line) > 2 and line[0].isdigit() and ". " in line:
                 line = line.split(". ", 1)[1].strip()
-            # 例示行はスキップ
             if line.startswith("例："):
                 continue
-            # 「テーマタイトル｜...」→ プレフィックスだけ除去して内容を使う
             if line.startswith("テーマタイトル｜"):
                 line = line[len("テーマタイトル｜"):].strip()
                 if line and len(line) > 10:
                     return line
                 continue
-            # 「テーマタイトル」単体行はスキップ
             if line.startswith("テーマタイトル"):
                 continue
             if "｜" in line or len(line) > 10:
@@ -320,7 +328,27 @@ def generate_themes(
                 results[idx] = fut.result()
             except Exception:
                 results[idx] = ""
-    return [t for t in results if t][:40]
+
+    # 重複排除：先頭タイトル部分（｜より前）が類似するものを除く
+    def _title_part(t: str) -> str:
+        return t.split("｜")[0].strip()
+
+    seen_titles: list[str] = []
+    deduped: list[str] = []
+    for t in results:
+        if not t:
+            continue
+        tp = _title_part(t)
+        # 既出タイトルと4文字以上共通する場合はスキップ
+        is_dup = any(
+            len(set(tp) & set(s)) >= 4 and (tp in s or s in tp or tp[:6] == s[:6])
+            for s in seen_titles
+        )
+        if not is_dup:
+            seen_titles.append(tp)
+            deduped.append(t)
+
+    return deduped[:40]
 
 
 def generate_ideas(
@@ -447,7 +475,26 @@ def generate_ideas(
                 results[idx] = fut.result()
             except Exception:
                 results[idx] = ""
-    return [t for t in results if t][:40]
+
+    # 重複排除：先頭タイトル部分（｜より前）が類似するものを除く
+    def _title_part(t: str) -> str:
+        return t.split("｜")[0].strip()
+
+    seen_titles: list[str] = []
+    deduped: list[str] = []
+    for t in results:
+        if not t:
+            continue
+        tp = _title_part(t)
+        is_dup = any(
+            len(set(tp) & set(s)) >= 4 and (tp in s or s in tp or tp[:6] == s[:6])
+            for s in seen_titles
+        )
+        if not is_dup:
+            seen_titles.append(tp)
+            deduped.append(t)
+
+    return deduped[:40]
 
 
 def generate_draft(
