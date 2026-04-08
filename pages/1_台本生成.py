@@ -1507,54 +1507,74 @@ elif step == 3:
         row2_variants = variants[5:] if len(variants) > 5 else []
 
         def _extract_bullets(draft: str, max_items: int = 4) -> list[str]:
-            """台本から内容を表す箇条書き項目を抽出する"""
-            bullets = []
+            """台本（散文・箇条書き混在）から内容を表す要点を抽出する"""
+            import re
 
-            # ① 台本中の箇条書き行（・／●／▶／→ で始まる行）を優先収集
+            SKIP_START = ("今日は", "こんにちは", "今回は", "みなさん", "はじめに",
+                          "この動画", "チャンネル登録", "最後まで", "いかがでしたか",
+                          "ぜひ", "コメント", "それでは", "よろしくお願い")
+            KEY_WORDS  = ("実は", "なぜ", "ほとんど", "多くの人", "間違い", "逆効果",
+                          "原因", "理由", "方法", "ポイント", "重要", "効果", "改善",
+                          "解決", "注意", "大切", "必要", "仕組み", "メカニズム",
+                          "ホルモン", "筋肉", "代謝", "カロリー", "脂肪", "体重")
+            NUM_RE = re.compile(r'\d+[%倍時間分秒kgKG回個週日ヶ月]')
+
+            bullets: list[str] = []
+
+            # ── ① 行頭が記号・数字の箇条書き行を優先収集 ──────────────
             for line in draft.split("\n"):
                 line = line.strip()
                 if len(line) < 10:
                     continue
-                if line.startswith(("・", "●", "▶", "→", "✅", "❌", "⚠", "◆", "◎", "○")):
-                    text = line.lstrip("・●▶→✅❌⚠◆◎○ ").strip()
+                if line.startswith(("・", "●", "▶", "→", "✅", "❌", "⚠", "◆", "◎", "□", "■")):
+                    text = line.lstrip("・●▶→✅❌⚠◆◎□■ ").strip()
                     if len(text) >= 8:
-                        bullets.append(text[:45] + ("…" if len(text) > 45 else ""))
-                # 数字箇条書き（①②③ or 1. 2. 3.）
-                elif len(line) > 2 and (line[0] in "①②③④⑤⑥⑦⑧⑨" or
-                      (line[0].isdigit() and len(line) > 3 and line[1] in ".．、")):
-                    text = line[1:].lstrip(".．、 ").strip()
+                        bullets.append(text[:50] + ("…" if len(text) > 50 else ""))
+                elif len(line) > 2 and line[0] in "①②③④⑤⑥⑦⑧⑨":
+                    text = line[1:].lstrip(". ").strip()
                     if len(text) >= 8:
-                        bullets.append(text[:45] + ("…" if len(text) > 45 else ""))
+                        bullets.append(text[:50] + ("…" if len(text) > 50 else ""))
+                elif re.match(r'^\d+[.．、）)]\s', line):
+                    text = re.sub(r'^\d+[.．、）)]\s*', '', line).strip()
+                    if len(text) >= 8:
+                        bullets.append(text[:50] + ("…" if len(text) > 50 else ""))
+                if len(bullets) >= max_items:
+                    return bullets
+
+            if len(bullets) >= 2:
+                return bullets[:max_items]
+
+            # ── ② 文を句点・改行で分割してスコアリング ─────────────────
+            sentences: list[str] = []
+            for chunk in re.split(r'[。\n]', draft):
+                chunk = re.sub(r'[「」『』【】\[\]（）()#＃]', '', chunk).strip()
+                if len(chunk) < 12:
+                    continue
+                if any(chunk.startswith(p) for p in SKIP_START):
+                    continue
+                sentences.append(chunk)
+
+            scored: list[tuple[int, str]] = []
+            for s in sentences:
+                score = sum(1 for w in KEY_WORDS if w in s)
+                if NUM_RE.search(s):
+                    score += 3   # 数値を含む文を優先
+                scored.append((score, s))
+
+            scored.sort(key=lambda x: -x[0])
+
+            seen: list[str] = []
+            for _, s in scored:
+                # 先頭12文字が既出なら重複とみなしスキップ
+                if any(s[:12] == b[:12] for b in seen):
+                    continue
+                seen.append(s)
+                text = s[:50] + ("…" if len(s) > 50 else "")
+                bullets.append(text)
                 if len(bullets) >= max_items:
                     break
 
-            # ② 箇条書きが少ない場合は【セクション名】行から補完
-            if len(bullets) < 2:
-                for line in draft.split("\n"):
-                    line = line.strip()
-                    if line.startswith("【") and "】" in line:
-                        label = line[line.index("【")+1:line.index("】")]
-                        if len(label) >= 3 and label not in ("はじめに", "まとめ", "おわりに", "導入", "結論"):
-                            bullets.append(label[:40])
-                    if len(bullets) >= max_items:
-                        break
-
-            # ③ それでも少ない場合は意味のある文を補完
-            if len(bullets) < 2:
-                skip = ("今日は", "こんにちは", "今回は", "みなさん", "この動画", "#", "【", "---")
-                key_words = ("実は", "なぜ", "ほとんど", "間違い", "逆効果", "原因", "理由", "方法", "ポイント")
-                for line in draft.split("\n"):
-                    line = line.strip()
-                    if len(line) < 15:
-                        continue
-                    if any(line.startswith(p) for p in skip):
-                        continue
-                    if any(w in line for w in key_words):
-                        bullets.append(line[:45] + ("…" if len(line) > 45 else ""))
-                    if len(bullets) >= max_items:
-                        break
-
-            return bullets[:max_items]
+            return bullets
 
         # ── 縦1列レイアウトで10パターンを全て表示 ────────────────────
         for ci, v in enumerate(variants):
