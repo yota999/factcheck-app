@@ -262,7 +262,10 @@ def generate_themes(
     ]
     overused_str = "・" + "\n・".join(OVERUSED_KEYWORDS)
 
-    def _gen_one(slot_key: str, slot_name: str, slot_desc: str) -> str:
+    def _gen_one(slot_key: str, slot_name: str, slot_desc: str, extra_used_str: str = "") -> str:
+        all_used_str = used_str
+        if extra_used_str:
+            all_used_str = used_str + "\n" + extra_used_str if used_str != "（まだなし）" else extra_used_str
         prompt = f"""{persona}
 
 30〜50代女性向けダイエット・健康系の{char_range}テーマを1個だけ提案してください。{keyword_str}
@@ -270,8 +273,8 @@ def generate_themes(
 【この1テーマに使う切り口】「{slot_name}」
 {slot_desc}
 
-【使用済みテーマ（被らないこと）】
-{used_str}
+【使用済みテーマ・既に採用済みテーマ（必ず全て異なる内容にすること）】
+{all_used_str}
 
 【NGテーマ（絶対に提案しないこと）】
 {rejected_str}
@@ -284,8 +287,8 @@ def generate_themes(
 
 【必須ルール】
 ・切り口「{slot_name}」をそのまま活かしたテーマにすること
+・上記「使用済みテーマ」と少しでも内容・主張・対象が被るテーマは絶対に出さないこと
 ・禁止キーワードと意味的に被るテーマ（言い換えも含む）は一切出さないこと
-・他の切り口で既に使われそうな汎用テーマ（有酸素/ウォーキング/朝活等）は絶対に避けること
 ・専門用語は使わず直感的な言葉にすること
 ・箇条書き3つは「具体的な事実・ホルモン名・数値・メカニズム名・行動」を含めること（「本当の理由」「正しい方法」など曖昧な表現は禁止）
 
@@ -294,7 +297,7 @@ def generate_themes(
 
 実際のテーマを1行で出力してください（「テーマタイトル」「ポイント1」などのプレースホルダーはそのまま書かないこと）"""
 
-        resp = _call_llm(prompt, model=model, temperature=0.9, max_tokens=200)
+        resp = _call_llm(prompt, model=model, temperature=0.92, max_tokens=200)
         for line in resp.split("\n"):
             line = line.strip()
             if not line:
@@ -314,41 +317,78 @@ def generate_themes(
                 return line
         return resp.strip()
 
-    # 40スロットを並列実行
-    import concurrent.futures as _cf
-    results: list = [""] * len(ANGLE_SLOTS)
-    with _cf.ThreadPoolExecutor(max_workers=20) as ex:
-        future_map = {
-            ex.submit(_gen_one, sk, sn, sd): i
-            for i, (sk, sn, sd) in enumerate(ANGLE_SLOTS)
-        }
-        for fut in _cf.as_completed(future_map):
-            idx = future_map[fut]
-            try:
-                results[idx] = fut.result()
-            except Exception:
-                results[idx] = ""
-
-    # 重複排除：先頭タイトル部分（｜より前）が類似するものを除く
     def _title_part(t: str) -> str:
         return t.split("｜")[0].strip()
 
-    seen_titles: list[str] = []
-    deduped: list[str] = []
+    def _is_dup(tp: str, seen: list[str]) -> bool:
+        for s in seen:
+            # 先頭5文字一致 OR タイトル部分が互いに含まれる OR 共通文字6文字以上
+            if tp[:5] == s[:5]:
+                return True
+            if len(tp) >= 8 and len(s) >= 8 and (tp[:8] in s or s[:8] in tp):
+                return True
+            if len(set(tp) & set(s)) >= 6 and (tp in s or s in tp):
+                return True
+        return False
+
+    def _run_parallel(slots_with_idx, extra_used: list[str] = []) -> dict[int, str]:
+        """slots_with_idx: list of (original_idx, slot_key, slot_name, slot_desc)"""
+        extra_str = "\n".join(f"・{t}" for t in extra_used) if extra_used else ""
+        out: dict[int, str] = {}
+        import concurrent.futures as _cf
+        with _cf.ThreadPoolExecutor(max_workers=20) as ex:
+            future_map = {
+                ex.submit(_gen_one, sk, sn, sd, extra_str): orig_i
+                for orig_i, sk, sn, sd in slots_with_idx
+            }
+            for fut in _cf.as_completed(future_map):
+                orig_i = future_map[fut]
+                try:
+                    out[orig_i] = fut.result()
+                except Exception:
+                    out[orig_i] = ""
+        return out
+
+    # Phase 1: 全40スロット並列生成
+    results: list[str] = [""] * len(ANGLE_SLOTS)
+    initial = [(i, sk, sn, sd) for i, (sk, sn, sd) in enumerate(ANGLE_SLOTS)]
+    for orig_i, val in _run_parallel(initial).items():
+        results[orig_i] = val
+
+    # Phase 2: 重複スロットを最大3回再生成
+    MAX_RETRIES = 3
+    for _retry in range(MAX_RETRIES):
+        seen_titles: list[str] = []
+        dup_indices: list[int] = []
+        for i, t in enumerate(results):
+            if not t:
+                dup_indices.append(i)
+                continue
+            tp = _title_part(t)
+            if _is_dup(tp, seen_titles):
+                dup_indices.append(i)
+            else:
+                seen_titles.append(tp)
+        if not dup_indices:
+            break
+        # 重複スロットのみ再生成（既存の有効テーマを全て used に渡す）
+        valid_items = [results[i] for i in range(len(results)) if i not in dup_indices and results[i]]
+        retry_slots = [(i, ANGLE_SLOTS[i][0], ANGLE_SLOTS[i][1], ANGLE_SLOTS[i][2]) for i in dup_indices]
+        for orig_i, val in _run_parallel(retry_slots, extra_used=valid_items).items():
+            results[orig_i] = val
+
+    # 最終重複排除（念のため）
+    seen_final: list[str] = []
+    final: list[str] = []
     for t in results:
         if not t:
             continue
         tp = _title_part(t)
-        # 既出タイトルと4文字以上共通する場合はスキップ
-        is_dup = any(
-            len(set(tp) & set(s)) >= 4 and (tp in s or s in tp or tp[:6] == s[:6])
-            for s in seen_titles
-        )
-        if not is_dup:
-            seen_titles.append(tp)
-            deduped.append(t)
+        if not _is_dup(tp, seen_final):
+            seen_final.append(tp)
+            final.append(t)
 
-    return deduped[:40]
+    return final[:40]
 
 
 def generate_ideas(
@@ -416,7 +456,10 @@ def generate_ideas(
         ("trend_e", "医学の最新常識アップデート型", "ここ数年で変わった医学的見解・新しい推奨基準"),
     ]
 
-    def _gen_one(slot_key: str, slot_name: str, slot_desc: str) -> str:
+    def _gen_one(slot_key: str, slot_name: str, slot_desc: str, extra_used_str: str = "") -> str:
+        all_rejected = rejected_str
+        if extra_used_str:
+            all_rejected = rejected_str + "\n" + extra_used_str if rejected_str != "（なし）" else extra_used_str
         prompt = f"""{persona}
 
 選ばれたテーマ：「{themes_str}」
@@ -429,11 +472,12 @@ def generate_ideas(
 【過去に好評だった要素（参考に）】
 {good_str}
 
-【NGアイデア（絶対に使わないこと）】
-{rejected_str}
+【NGアイデア・既に採用済みアイデア（少しでも内容・主張が被るものは絶対に出さないこと）】
+{all_rejected}
 
 【必須ルール】
 ・切り口「{slot_name}」を活かした具体的なアイデアにすること
+・上記NGアイデアと内容・切り口・主張が少しでも重なるアイデアは絶対に出さないこと
 ・専門用語は使わず初心者でも直感的にわかる言葉にすること
 ・視聴者が「これ自分のことだ」「知りたい！」と思える表現にすること
 ・箇条書き3つは「具体的な事実・ホルモン名・数値・メカニズム名・行動」を含めること（「正しい方法」「改善のヒント」など曖昧な表現は禁止）
@@ -443,7 +487,7 @@ def generate_ideas(
 
 実際のアイデアを1行で出力してください（「アイデア内容」などプレースホルダーはそのまま書かないこと）"""
 
-        resp = _call_llm(prompt, model=model, temperature=0.9, max_tokens=200)
+        resp = _call_llm(prompt, model=model, temperature=0.92, max_tokens=200)
         for line in resp.split("\n"):
             line = line.strip()
             if not line:
@@ -462,39 +506,75 @@ def generate_ideas(
                 return line
         return resp.strip().replace("**", "").replace("*", "")
 
-    import concurrent.futures as _cf
-    results: list = [""] * len(IDEA_SLOTS)
-    with _cf.ThreadPoolExecutor(max_workers=20) as ex:
-        future_map = {
-            ex.submit(_gen_one, sk, sn, sd): i
-            for i, (sk, sn, sd) in enumerate(IDEA_SLOTS)
-        }
-        for fut in _cf.as_completed(future_map):
-            idx = future_map[fut]
-            try:
-                results[idx] = fut.result()
-            except Exception:
-                results[idx] = ""
-
-    # 重複排除：先頭タイトル部分（｜より前）が類似するものを除く
     def _title_part(t: str) -> str:
         return t.split("｜")[0].strip()
 
-    seen_titles: list[str] = []
-    deduped: list[str] = []
+    def _is_dup(tp: str, seen: list[str]) -> bool:
+        for s in seen:
+            if tp[:5] == s[:5]:
+                return True
+            if len(tp) >= 8 and len(s) >= 8 and (tp[:8] in s or s[:8] in tp):
+                return True
+            if len(set(tp) & set(s)) >= 6 and (tp in s or s in tp):
+                return True
+        return False
+
+    def _run_parallel(slots_with_idx, extra_used: list[str] = []) -> dict[int, str]:
+        import concurrent.futures as _cf
+        extra_str = "\n".join(f"・{t}" for t in extra_used) if extra_used else ""
+        out: dict[int, str] = {}
+        with _cf.ThreadPoolExecutor(max_workers=20) as ex:
+            future_map = {
+                ex.submit(_gen_one, sk, sn, sd, extra_str): orig_i
+                for orig_i, sk, sn, sd in slots_with_idx
+            }
+            for fut in _cf.as_completed(future_map):
+                orig_i = future_map[fut]
+                try:
+                    out[orig_i] = fut.result()
+                except Exception:
+                    out[orig_i] = ""
+        return out
+
+    # Phase 1: 全40スロット並列生成
+    results: list[str] = [""] * len(IDEA_SLOTS)
+    initial = [(i, sk, sn, sd) for i, (sk, sn, sd) in enumerate(IDEA_SLOTS)]
+    for orig_i, val in _run_parallel(initial).items():
+        results[orig_i] = val
+
+    # Phase 2: 重複スロットを最大3回再生成
+    MAX_RETRIES = 3
+    for _retry in range(MAX_RETRIES):
+        seen_titles: list[str] = []
+        dup_indices: list[int] = []
+        for i, t in enumerate(results):
+            if not t:
+                dup_indices.append(i)
+                continue
+            tp = _title_part(t)
+            if _is_dup(tp, seen_titles):
+                dup_indices.append(i)
+            else:
+                seen_titles.append(tp)
+        if not dup_indices:
+            break
+        valid_items = [results[i] for i in range(len(results)) if i not in dup_indices and results[i]]
+        retry_slots = [(i, IDEA_SLOTS[i][0], IDEA_SLOTS[i][1], IDEA_SLOTS[i][2]) for i in dup_indices]
+        for orig_i, val in _run_parallel(retry_slots, extra_used=valid_items).items():
+            results[orig_i] = val
+
+    # 最終重複排除（念のため）
+    seen_final: list[str] = []
+    final: list[str] = []
     for t in results:
         if not t:
             continue
         tp = _title_part(t)
-        is_dup = any(
-            len(set(tp) & set(s)) >= 4 and (tp in s or s in tp or tp[:6] == s[:6])
-            for s in seen_titles
-        )
-        if not is_dup:
-            seen_titles.append(tp)
-            deduped.append(t)
+        if not _is_dup(tp, seen_final):
+            seen_final.append(tp)
+            final.append(t)
 
-    return deduped[:40]
+    return final[:40]
 
 
 def generate_draft(
