@@ -597,11 +597,6 @@ def _init():
         "sg_variant_error": "",
         # ファクトチェック
         "sg_fc_results": [],
-        # FC討論型
-        "sg_fc_messages": [],
-        "sg_fc_corrected": "",
-        "sg_fc_changes": "",
-        "sg_fc_original_draft": "",
         # 部分ブラッシュアップ
         "sg_brushup_candidates": [],
         "sg_brushup_original": "",
@@ -1629,16 +1624,12 @@ elif step == 3:
                     except Exception:
                         pass
                 st.session_state.sg_titles = ""
-                st.session_state.sg_fc_messages = []
-                st.session_state.sg_fc_corrected = ""
-                st.session_state.sg_fc_changes = ""
-                st.session_state.sg_fc_original_draft = ""
                 st.session_state.sg_step = 4
                 st.rerun()
 
 
 # ════════════════════════════════════════════════════════════════════
-# Step 4: AI討論型ファクトチェック + タイトル生成 + 最終調整
+# Step 4: タイトル生成 + 最終調整
 # ════════════════════════════════════════════════════════════════════
 elif step == 4:
     draft = st.session_state.sg_edited_draft
@@ -1667,10 +1658,6 @@ elif step == 4:
         st.session_state["sg_last_learned_rules"] = []
 
     # ── タイトル自動生成 ──────────────────────────────────────────
-    # FC用に元の台本をここで保存（rerun前に確保）
-    if not st.session_state.get("sg_fc_original_draft"):
-        st.session_state.sg_fc_original_draft = draft
-
     titles = st.session_state.sg_titles
     if not titles:
         with st.spinner("タイトル候補を生成中..."):
@@ -1724,237 +1711,6 @@ elif step == 4:
                     unsafe_allow_html=True,
                 )
         st.markdown('</div>', unsafe_allow_html=True)
-
-    # ── AI討論型ファクトチェック（リアルタイム逐次チャット） ────────────────
-    _TOTAL_FC = 8  # 4AI × 2ラウンド
-
-    # エージェント情報（順番・UI表示用）
-    _FC_AGENTS = [
-        {"name": "Claude",  "icon": "🟣", "side": "left",  "color": "#7C3AED", "bg": "#F5F3FF"},
-        {"name": "ChatGPT", "icon": "🟢", "side": "right", "color": "#059669", "bg": "#ECFDF5"},
-        {"name": "Grok",    "icon": "⚫", "side": "right", "color": "#374151", "bg": "#F3F4F6"},
-        {"name": "Gemini",  "icon": "🔵", "side": "left",  "color": "#1D4ED8", "bg": "#EFF6FF"},
-    ]
-    _FC_ROUND_LABELS = {
-        1: ("🔍", "Round 1 — 問題点・弱点の指摘",    "#1E3A5F"),
-        2: ("💡", "Round 2 — 具体的な改善案の提示",  "#1A3A2A"),
-    }
-
-    fc_messages  = st.session_state.get("sg_fc_messages", [])
-    fc_corrected = st.session_state.get("sg_fc_corrected", "")
-    fc_changes   = st.session_state.get("sg_fc_changes", "")
-    original_draft = st.session_state.get("sg_fc_original_draft", draft)
-
-    # ─ ヘッダー + やり直しボタン ──────────────────────────────────────
-    n_done = len(fc_messages)
-    col_fc_h, col_fc_btn = st.columns([4, 1])
-    with col_fc_h:
-        if n_done < _TOTAL_FC:
-            prog_label = f"💬 AIファクトチェック討論中... ({n_done}/{_TOTAL_FC})"
-            prog_color = "#F59E0B"
-        elif not fc_corrected:
-            prog_label = "⚙️ 修正版台本を生成中..."
-            prog_color = "#3B82F6"
-        else:
-            prog_label = "✅ AIファクトチェック討論 完了"
-            prog_color = "#10B981"
-        st.markdown(
-            f'<div style="background:#1F2937;border-radius:12px;padding:14px 20px;">'
-            f'<div style="font-size:1rem;font-weight:800;color:{prog_color};">{prog_label}</div>'
-            f'<div style="font-size:0.74rem;color:#9CA3AF;margin-top:4px;">'
-            f'🟣 Claude（左）・🟢 ChatGPT（右）・⚫ Grok（右）・🔵 Gemini（左）の順で2ラウンド討論</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-    with col_fc_btn:
-        if fc_messages and st.button("🔄 やり直す", key="redo_fc"):
-            st.session_state.sg_fc_messages  = []
-            st.session_state.sg_fc_corrected = ""
-            st.session_state.sg_fc_changes   = ""
-            orig = st.session_state.get("sg_fc_original_draft", "")
-            if orig:
-                st.session_state.sg_edited_draft = orig
-            st.session_state.sg_fc_original_draft = ""
-            st.rerun()
-
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-    # ─ チャット吹き出し表示（全メッセージを単一HTMLで一括レンダリング） ──
-    def _build_fc_chat_html(messages: list, typing_next=None) -> str:
-        """
-        FC討論の全メッセージ＋タイピング中インジケーターを
-        暗背景コンテナで一括HTML化して返す。
-        typing_next: 次に発言するエージェント情報（生成中のみ）
-        """
-        parts = [
-            '<div style="background:#111827;border-radius:16px;padding:20px 24px;'
-            'margin:8px 0 16px;box-shadow:0 4px 24px rgba(0,0,0,.2);">'
-        ]
-        prev_round = None
-        for m in messages:
-            rnd = m.get("round", 1)
-            if rnd != prev_round:
-                icon_r, label_r, bg_r = _FC_ROUND_LABELS.get(rnd, ("💬", f"Round {rnd}", "#374151"))
-                parts.append(
-                    f'<div style="background:{bg_r};border-radius:8px;padding:6px 14px;'
-                    f'margin:{"4px" if prev_round is None else "18px"} 0 10px;'
-                    f'font-size:0.75rem;font-weight:700;color:#E5E7EB;">'
-                    f'{icon_r} {label_r}</div>'
-                )
-                prev_round = rnd
-
-            msg_html = m["message"].replace("\n", "<br>").replace("'", "&#39;")
-            color = m["color"]
-            bg    = m["bg"]
-            icon  = m["icon"]
-            agent = m["agent"]
-
-            if m["side"] == "left":
-                parts.append(
-                    f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;">'
-                    f'<div style="width:38px;height:38px;border-radius:50%;background:{bg};'
-                    f'border:2px solid {color};display:flex;align-items:center;'
-                    f'justify-content:center;font-size:1.1rem;flex-shrink:0;">{icon}</div>'
-                    f'<div style="background:{bg};border:1px solid {color}44;'
-                    f'border-radius:4px 18px 18px 18px;padding:12px 16px;max-width:80%;">'
-                    f'<div style="font-size:0.72rem;font-weight:700;color:{color};margin-bottom:5px;">{agent}</div>'
-                    f'<div style="font-size:0.84rem;color:#1F2937;line-height:1.75;">{msg_html}</div>'
-                    f'</div></div>'
-                )
-            else:
-                parts.append(
-                    f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;flex-direction:row-reverse;">'
-                    f'<div style="width:38px;height:38px;border-radius:50%;background:{bg};'
-                    f'border:2px solid {color};display:flex;align-items:center;'
-                    f'justify-content:center;font-size:1.1rem;flex-shrink:0;">{icon}</div>'
-                    f'<div style="background:{bg};border:1px solid {color}44;'
-                    f'border-radius:18px 4px 18px 18px;padding:12px 16px;max-width:80%;">'
-                    f'<div style="font-size:0.72rem;font-weight:700;color:{color};margin-bottom:5px;text-align:right;">{agent}</div>'
-                    f'<div style="font-size:0.84rem;color:#1F2937;line-height:1.75;">{msg_html}</div>'
-                    f'</div></div>'
-                )
-
-        # タイピングインジケーター（生成中のみ）
-        if typing_next:
-            # 次のラウンドに切り替わるタイミングでラベル追加
-            next_rnd = (len(messages)) // 4 + 1
-            if next_rnd != prev_round and len(messages) % 4 == 0 and len(messages) > 0:
-                icon_r, label_r, bg_r = _FC_ROUND_LABELS.get(next_rnd, ("💬", f"Round {next_rnd}", "#374151"))
-                parts.append(
-                    f'<div style="background:{bg_r};border-radius:8px;padding:6px 14px;'
-                    f'margin:18px 0 10px;font-size:0.75rem;font-weight:700;color:#E5E7EB;">'
-                    f'{icon_r} {label_r}</div>'
-                )
-            t_color = typing_next["color"]
-            t_bg    = typing_next["bg"]
-            t_icon  = typing_next["icon"]
-            t_name  = typing_next["name"]
-            t_side  = typing_next["side"]
-            if t_side == "left":
-                parts.append(
-                    f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;opacity:0.7;">'
-                    f'<div style="width:38px;height:38px;border-radius:50%;background:{t_bg};'
-                    f'border:2px dashed {t_color};display:flex;align-items:center;'
-                    f'justify-content:center;font-size:1.1rem;flex-shrink:0;">{t_icon}</div>'
-                    f'<div style="background:{t_bg};border:1px dashed {t_color}88;'
-                    f'border-radius:4px 18px 18px 18px;padding:12px 16px;">'
-                    f'<div style="font-size:0.72rem;font-weight:700;color:{t_color};margin-bottom:5px;">{t_name}</div>'
-                    f'<div style="font-size:0.84rem;color:#6B7280;">入力中 ●●●</div>'
-                    f'</div></div>'
-                )
-            else:
-                parts.append(
-                    f'<div style="display:flex;gap:10px;margin:10px 0;align-items:flex-start;flex-direction:row-reverse;opacity:0.7;">'
-                    f'<div style="width:38px;height:38px;border-radius:50%;background:{t_bg};'
-                    f'border:2px dashed {t_color};display:flex;align-items:center;'
-                    f'justify-content:center;font-size:1.1rem;flex-shrink:0;">{t_icon}</div>'
-                    f'<div style="background:{t_bg};border:1px dashed {t_color}88;'
-                    f'border-radius:18px 4px 18px 18px;padding:12px 16px;">'
-                    f'<div style="font-size:0.72rem;font-weight:700;color:{t_color};margin-bottom:5px;text-align:right;">{t_name}</div>'
-                    f'<div style="font-size:0.84rem;color:#6B7280;">入力中 ●●●</div>'
-                    f'</div></div>'
-                )
-
-        parts.append('</div>')
-        return "".join(parts)
-
-    # ─ 次のメッセージを生成（討論中） ────────────────────────────────────
-    if n_done < _TOTAL_FC:
-        next_idx  = n_done
-        next_info = _FC_AGENTS[next_idx % 4]
-
-        # 既存メッセージ＋タイピングインジケーターをまとめて表示（常に）
-        st.markdown(_build_fc_chat_html(fc_messages, typing_next=next_info),
-                    unsafe_allow_html=True)
-
-        # タイマー表示
-        _timer = st.empty()
-
-        # バックグラウンドで1メッセージ生成
-        _result: dict = {}
-        _snap_msgs  = list(fc_messages)
-        _snap_draft = original_draft
-
-        def _gen_one():
-            try:
-                from script_crew import generate_next_fc_message
-                _result["msg"] = generate_next_fc_message(_snap_draft, _snap_msgs)
-            except Exception as e:
-                _result["err"] = str(e)
-
-        _t = threading.Thread(target=_gen_one, daemon=True)
-        _t.start()
-        _elapsed = 0
-        while _t.is_alive():
-            _elapsed += 1
-            _timer.caption(f"⏱ {_elapsed}秒...")
-            time.sleep(1)
-        _t.join()
-        _timer.empty()
-
-        if _result.get("msg"):
-            st.session_state.sg_fc_messages = _snap_msgs + [_result["msg"]]
-        elif _result.get("err"):
-            st.error(f"生成エラー: {_result['err']}")
-        st.rerun()
-
-    # ─ 討論完了 → 修正版台本を生成 ───────────────────────────────────────
-    elif not fc_corrected:
-        # 全8件の吹き出しを表示
-        st.markdown(_build_fc_chat_html(fc_messages), unsafe_allow_html=True)
-        with st.spinner("🔧 AIたちの議論を台本に反映しています（30〜60秒）..."):
-            try:
-                from script_crew import auto_correct_from_discussion
-                _corr = auto_correct_from_discussion(original_draft, list(fc_messages))
-                st.session_state.sg_fc_corrected = _corr.get("corrected", "")
-                st.session_state.sg_fc_changes   = _corr.get("changes", "")
-                if _corr.get("corrected"):
-                    st.session_state.sg_edited_draft = _corr["corrected"]
-            except Exception as e:
-                st.error(f"台本修正エラー: {e}")
-        st.rerun()
-
-    # ─ 全完了 → 吹き出し + 修正箇所サマリー ＆ バナー ──────────────────
-    else:
-        # ★ 完了後も全8件の吹き出しを必ず表示
-        st.markdown(_build_fc_chat_html(fc_messages), unsafe_allow_html=True)
-
-        if fc_changes:
-            with st.expander("📋 討論で合意した修正箇所", expanded=False):
-                for line in fc_changes.split("\n"):
-                    if line.strip():
-                        st.markdown(line)
-
-        st.markdown("""
-<div style="background:linear-gradient(135deg,#ECFDF5 0%,#F0FDF4 100%);
-border:1px solid #6EE7B7;border-radius:12px;padding:12px 18px;margin:16px 0;
-display:flex;align-items:center;gap:10px;">
-<span style="font-size:1.1rem;">✅</span>
-<span style="font-weight:600;color:#065F46;font-size:.88rem;">
-AI討論の指摘を全て反映した修正版台本が下記に自動適用されています
-</span>
-</div>
-""", unsafe_allow_html=True)
 
     st.markdown("---")
 
