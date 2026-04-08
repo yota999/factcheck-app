@@ -1427,6 +1427,19 @@ elif step == 3:
         "trend":      ("#0369A1", "#F0F9FF", "#BAE6FD"),
         "expert":     ("#9D174D", "#FFF1F2", "#FFE4E6"),
     }
+    # 各切り口の「主張スタンス」一言説明
+    ANGLE_STANCE = {
+        "science":    "科学論文・研究データで\n「実は〇〇だった」を証明する",
+        "emotion":    "視聴者の悩みに深く共感し\n感情から行動を引き出す",
+        "story":      "実体験・成功/失敗談で\nリアルな説得力を持たせる",
+        "debate":     "常識の逆をついて\n「実は逆効果だった」で驚かせる",
+        "action":     "今日から始める具体的な\n行動1つをシンプルに提案する",
+        "ranking":    "TOP3・ワーストなど\nランキング形式で比較して見せる",
+        "howto":      "正しい手順・NGな手順を\n段階的にわかりやすく解説する",
+        "psychology": "脳・心理の仕組みから\n「続かない理由」を解き明かす",
+        "trend":      "SNS・最新研究トレンドを切り口に\n旬の情報として届ける",
+        "expert":     "医師・専門家の言葉を借りて\n権威と信頼性で説得する",
+    }
 
     # ── A) 自動生成（未生成の場合はボタンなしで自動スタート） ───────
     if not variants:
@@ -1493,13 +1506,33 @@ elif step == 3:
         row1_variants = variants[:5]
         row2_variants = variants[5:] if len(variants) > 5 else []
 
-        def _extract_hook(draft: str) -> str:
-            """台本の冒頭フックを80字以内で抽出する"""
+        def _extract_core_claim(draft: str) -> str:
+            """台本から核心となる主張文を抽出する（冒頭の挨拶・導入を除く）"""
+            skip_patterns = ("今日は", "こんにちは", "今回は", "みなさん", "はじめに",
+                              "この動画", "この台本", "この動画では", "#", "【", "---")
+            candidates = []
             for line in draft.split("\n"):
                 line = line.strip()
-                if len(line) >= 15 and not line.startswith("#") and not line.startswith("【"):
-                    return line[:80] + ("…" if len(line) > 80 else "")
-            return draft[:80].strip()
+                if len(line) < 20:
+                    continue
+                if any(line.startswith(p) for p in skip_patterns):
+                    continue
+                # 「実は」「なぜ」「〇〇すると」「〇〇しても」などの核心ワードを含む行を優先
+                priority_words = ("実は", "なぜ", "ほとんどの人", "多くの人", "じつは",
+                                   "間違い", "逆効果", "知らない", "だけで", "原因",
+                                   "理由", "秘密", "驚き", "本当の", "証明")
+                score = sum(1 for w in priority_words if w in line)
+                candidates.append((score, line))
+            if candidates:
+                candidates.sort(key=lambda x: -x[0])
+                best = candidates[0][1]
+                return best[:60] + "…" if len(best) > 60 else best
+            # fallbackとして非空行の最初のもの
+            for line in draft.split("\n"):
+                line = line.strip()
+                if len(line) >= 20 and not line.startswith("#"):
+                    return line[:60] + "…" if len(line) > 60 else line
+            return ""
 
         def _render_angle_row(row_variants, offset):
             cols = st.columns(len(row_variants))
@@ -1508,24 +1541,33 @@ elif step == 3:
                 ak = v["angle_key"]
                 icon = ANGLE_ICONS.get(ak, "✍️")
                 txt_color, bg, border = ANGLE_COLORS.get(ak, ("#4F46E5", "#EEF2FF", "#C7D2FE"))
+                stance = ANGLE_STANCE.get(ak, "")
+                core = _extract_core_claim(v.get("draft", ""))
                 is_sel = (ci == sel_idx)
                 card_bg = bg if is_sel else "white"
-                card_border = border if is_sel else "#E5E7EB"
-                shadow = f"0 0 0 3px {border}" if is_sel else "none"
-                hook = _extract_hook(v.get("draft", ""))
+                card_border = f"2px solid {border}" if is_sel else "1px solid #E5E7EB"
+                shadow = f"0 0 0 3px {border}55" if is_sel else "none"
+                stance_html = stance.replace("\n", "<br>")
                 with cols[ci_local]:
                     st.markdown(
-                        f'<div style="background:{card_bg};border:2px solid {card_border};'
+                        f'<div style="background:{card_bg};border:{card_border};'
                         f'border-radius:12px;padding:10px 8px;'
-                        f'box-shadow:{shadow};min-height:100px;">'
+                        f'box-shadow:{shadow};min-height:130px;">'
+                        # アイコン＋切り口名
                         f'<div style="text-align:center;">'
                         f'<div style="font-size:1.3rem;">{icon}</div>'
                         f'<div style="font-size:0.7rem;font-weight:700;color:{txt_color};'
                         f'margin-top:3px;line-height:1.3;">{v["angle_name"]}</div>'
                         f'</div>'
-                        f'<div style="font-size:0.67rem;color:#6B7280;margin-top:6px;'
-                        f'line-height:1.5;border-top:1px solid {border};padding-top:6px;">'
-                        f'{hook}</div>'
+                        # スタンス説明（固定）
+                        f'<div style="font-size:0.68rem;color:{txt_color};font-weight:600;'
+                        f'margin-top:7px;line-height:1.55;border-top:1px solid {border};'
+                        f'padding-top:6px;text-align:center;">'
+                        f'{stance_html}</div>'
+                        # 台本から抽出した核心文
+                        f'<div style="font-size:0.63rem;color:#9CA3AF;margin-top:5px;'
+                        f'line-height:1.45;border-top:1px dashed #E5E7EB;padding-top:5px;">'
+                        f'💬 {core}</div>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
@@ -1533,7 +1575,6 @@ elif step == 3:
                                  key=f"sel_variant_{ci}",
                                  type="primary" if is_sel else "secondary",
                                  use_container_width=True):
-                        # テキストエリアのキャッシュを必ずクリアしてから切り替え
                         st.session_state.pop("sg_direct_edit_v2", None)
                         st.session_state["sg_selected_variant_idx"] = ci
                         st.session_state.sg_draft = variants[ci]["draft"]
