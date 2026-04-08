@@ -618,13 +618,50 @@ def generate_draft_variants(
 
 【必須ルール】
 ・文字数：{char_min}〜{char_max}文字
-・台本本文のみ出力（説明・補足不要）
-・改行を適切に入れて読みやすく"""
+・改行を適切に入れて読みやすく
+
+【出力フォーマット（必ずこの順序・この見出しで出力すること）】
+
+<<SUMMARY>>
+・（この台本で話すメインの主張・論点を1行で。挨拶・導入ではなく「何を主張するか」）
+・（視聴者にとっての最大のポイント・驚きを1行で）
+・（この台本で紹介する具体的な解決策・行動・方法を1行で）
+<<END_SUMMARY>>
+
+<<DRAFT>>
+（ここから台本本文のみ。{char_min}〜{char_max}文字）
+<<END_DRAFT>>"""
         try:
-            draft = _call_llm(prompt, model=model, temperature=0.72, max_tokens=max_tok)
+            raw = _call_llm(prompt, model=model, temperature=0.72, max_tokens=max_tok + 300)
         except Exception as e:
-            draft = f"（生成エラー: {e}）"
-        return {"angle_key": angle_key, "angle_name": angle_name, "draft": draft}
+            return {"angle_key": angle_key, "angle_name": angle_name,
+                    "draft": f"（生成エラー: {e}）", "summary": []}
+
+        # サマリーと台本本文を分離してパース
+        summary: list[str] = []
+        draft = raw
+
+        if "<<SUMMARY>>" in raw and "<<END_SUMMARY>>" in raw:
+            s_start = raw.index("<<SUMMARY>>") + len("<<SUMMARY>>")
+            s_end   = raw.index("<<END_SUMMARY>>")
+            summary_block = raw[s_start:s_end].strip()
+            for line in summary_block.split("\n"):
+                line = line.strip().lstrip("・●▶→- ").strip()
+                if len(line) >= 8:
+                    summary.append(line[:60] + ("…" if len(line) > 60 else ""))
+
+        if "<<DRAFT>>" in raw and "<<END_DRAFT>>" in raw:
+            d_start = raw.index("<<DRAFT>>") + len("<<DRAFT>>")
+            d_end   = raw.index("<<END_DRAFT>>")
+            draft = raw[d_start:d_end].strip()
+        elif "<<DRAFT>>" in raw:
+            draft = raw[raw.index("<<DRAFT>>") + len("<<DRAFT>>"):].strip()
+        elif "<<SUMMARY>>" in raw:
+            # サマリーより後ろ全体を台本とみなす
+            draft = raw[raw.index("<<END_SUMMARY>>") + len("<<END_SUMMARY>>"):].strip()
+
+        return {"angle_key": angle_key, "angle_name": angle_name,
+                "draft": draft, "summary": summary}
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
         futures = [ex.submit(_gen_one, ak, an, ad) for ak, an, ad in DRAFT_ANGLES]

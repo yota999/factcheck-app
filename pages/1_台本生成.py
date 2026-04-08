@@ -1506,75 +1506,9 @@ elif step == 3:
         row1_variants = variants[:5]
         row2_variants = variants[5:] if len(variants) > 5 else []
 
-        def _extract_bullets(draft: str, max_items: int = 4) -> list[str]:
-            """台本（散文・箇条書き混在）から内容を表す要点を抽出する"""
-            import re
-
-            SKIP_START = ("今日は", "こんにちは", "今回は", "みなさん", "はじめに",
-                          "この動画", "チャンネル登録", "最後まで", "いかがでしたか",
-                          "ぜひ", "コメント", "それでは", "よろしくお願い")
-            KEY_WORDS  = ("実は", "なぜ", "ほとんど", "多くの人", "間違い", "逆効果",
-                          "原因", "理由", "方法", "ポイント", "重要", "効果", "改善",
-                          "解決", "注意", "大切", "必要", "仕組み", "メカニズム",
-                          "ホルモン", "筋肉", "代謝", "カロリー", "脂肪", "体重")
-            NUM_RE = re.compile(r'\d+[%倍時間分秒kgKG回個週日ヶ月]')
-
-            bullets: list[str] = []
-
-            # ── ① 行頭が記号・数字の箇条書き行を優先収集 ──────────────
-            for line in draft.split("\n"):
-                line = line.strip()
-                if len(line) < 10:
-                    continue
-                if line.startswith(("・", "●", "▶", "→", "✅", "❌", "⚠", "◆", "◎", "□", "■")):
-                    text = line.lstrip("・●▶→✅❌⚠◆◎□■ ").strip()
-                    if len(text) >= 8:
-                        bullets.append(text[:50] + ("…" if len(text) > 50 else ""))
-                elif len(line) > 2 and line[0] in "①②③④⑤⑥⑦⑧⑨":
-                    text = line[1:].lstrip(". ").strip()
-                    if len(text) >= 8:
-                        bullets.append(text[:50] + ("…" if len(text) > 50 else ""))
-                elif re.match(r'^\d+[.．、）)]\s', line):
-                    text = re.sub(r'^\d+[.．、）)]\s*', '', line).strip()
-                    if len(text) >= 8:
-                        bullets.append(text[:50] + ("…" if len(text) > 50 else ""))
-                if len(bullets) >= max_items:
-                    return bullets
-
-            if len(bullets) >= 2:
-                return bullets[:max_items]
-
-            # ── ② 文を句点・改行で分割してスコアリング ─────────────────
-            sentences: list[str] = []
-            for chunk in re.split(r'[。\n]', draft):
-                chunk = re.sub(r'[「」『』【】\[\]（）()#＃]', '', chunk).strip()
-                if len(chunk) < 12:
-                    continue
-                if any(chunk.startswith(p) for p in SKIP_START):
-                    continue
-                sentences.append(chunk)
-
-            scored: list[tuple[int, str]] = []
-            for s in sentences:
-                score = sum(1 for w in KEY_WORDS if w in s)
-                if NUM_RE.search(s):
-                    score += 3   # 数値を含む文を優先
-                scored.append((score, s))
-
-            scored.sort(key=lambda x: -x[0])
-
-            seen: list[str] = []
-            for _, s in scored:
-                # 先頭12文字が既出なら重複とみなしスキップ
-                if any(s[:12] == b[:12] for b in seen):
-                    continue
-                seen.append(s)
-                text = s[:50] + ("…" if len(s) > 50 else "")
-                bullets.append(text)
-                if len(bullets) >= max_items:
-                    break
-
-            return bullets
+        def _get_summary(v: dict) -> list[str]:
+            """バリアントのsummaryフィールドを返す（旧形式への後方互換あり）"""
+            return v.get("summary") or []
 
         # ── 縦1列レイアウトで10パターンを全て表示 ────────────────────
         for ci, v in enumerate(variants):
@@ -1586,14 +1520,14 @@ elif step == 3:
             card_border_style = f"2px solid {txt_color}" if is_sel else f"1px solid {border}"
             shadow = f"0 4px 12px {border}88" if is_sel else "0 1px 4px rgba(0,0,0,0.06)"
 
-            bullets = _extract_bullets(v.get("draft", ""))
+            bullets = _get_summary(v)
             bullets_html = "".join(
                 f'<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:4px;">'
                 f'<span style="color:{txt_color};font-size:0.7rem;margin-top:1px;flex-shrink:0;">▶</span>'
                 f'<span style="font-size:0.78rem;color:#374151;line-height:1.55;">{b}</span>'
                 f'</div>'
                 for b in bullets
-            ) if bullets else f'<span style="font-size:0.75rem;color:#9CA3AF;">（内容を読み込み中）</span>'
+            ) if bullets else f'<span style="font-size:0.75rem;color:#9CA3AF;">（台本を選択して内容を確認してください）</span>'
 
             col_card, col_btn = st.columns([10, 2])
             with col_card:
