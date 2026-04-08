@@ -627,30 +627,27 @@ def generate_draft_variants(
         return {"angle_key": angle_key, "angle_name": angle_name, "draft": draft, "summary": []}
 
     def _gen_summary(item: dict) -> dict:
-        """台本から3行の内容サマリーを生成して summary フィールドに追加する"""
+        """台本からこの切り口ならではの特徴的な点を3行で生成する"""
         draft = item.get("draft", "")
         if not draft or draft.startswith("（生成エラー"):
             return item
         angle_name = item.get("angle_name", "")
-        prompt = f"""以下の台本を読んで、「この台本では何を話しているか」を視聴者目線で3行にまとめてください。
+        prompt = f"""以下は【{angle_name}】という切り口で作られた台本です。
 
 【台本（抜粋）】
-{draft[:800]}
+{draft[:900]}
 
-【ルール】
-・挨拶・導入・締めの言葉は含めないこと
-・「この台本では〜」のような前置きは不要
-・「〇〇が原因で△△になる」「〇〇をやめると△△が変わる」のように、具体的な主張・内容・行動を書くこと
-・各行は40文字以内
-・「・」で始まる3行だけを出力すること（他の文章は一切不要）
+この切り口【{angle_name}】だからこそ使われている「独自の視点・根拠・アプローチ・具体的な方法」を3行で書いてください。
 
-例：
-・食べる量を減らしても痩せない本当の原因はレプチン低下にある
-・筋肉量が落ちると基礎代謝が1日200kcal以上低下する
-・週2回のスクワットだけで3週間後に代謝が回復する"""
+【厳守ルール】
+・「〇〇はリバウンドする」「食べないと痩せない」のような、どの台本にも共通する一般論は絶対に書かない
+・この切り口【{angle_name}】でしか語れない具体的な内容・手法・視点だけを書く
+・数字・ホルモン名・具体的な行動・メカニズム名など「この台本ならでは」の具体情報を必ず含める
+・各行は45文字以内
+・「・」で始まる3行だけ出力（前置き・説明・タイトル等は一切不要）"""
         try:
             resp = _call_llm(prompt, model="anthropic/claude-sonnet-4-6",
-                             temperature=0.5, max_tokens=200)
+                             temperature=0.6, max_tokens=200)
             lines = []
             for line in resp.split("\n"):
                 line = line.strip().lstrip("・●▶→- 　").strip()
@@ -663,15 +660,43 @@ def generate_draft_variants(
             item["summary"] = []
         return item
 
+    def _dedup_summaries(results: list) -> list:
+        """全カード間で重複・類似している箇条書きを除去する"""
+        # 全サマリーの先頭10文字を集計して、3枚以上に登場するものを「共通文」とみなす
+        from collections import Counter
+        prefix_count: Counter = Counter()
+        for item in results:
+            seen = set()
+            for line in item.get("summary", []):
+                key = line[:10]
+                if key not in seen:
+                    prefix_count[key] += 1
+                    seen.add(key)
+
+        # 3枚以上に出現するprefixは共通すぎるので除去
+        common_prefixes = {k for k, v in prefix_count.items() if v >= 3}
+
+        for item in results:
+            unique = [
+                line for line in item.get("summary", [])
+                if line[:10] not in common_prefixes
+            ]
+            # 除去後に空になった場合は元のリストを維持（最低1行は見せる）
+            item["summary"] = unique if unique else item.get("summary", [])[:1]
+        return results
+
     # ── Step1: 台本を10本並列生成 ─────────────────────────────────────
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
         futures = [ex.submit(_gen_one, ak, an, ad) for ak, an, ad in DRAFT_ANGLES]
         results = [f.result() for f in concurrent.futures.as_completed(futures)]
 
-    # ── Step2: サマリーを10本並列生成 ────────────────────────────────
+    # ── Step2: 切り口ならではのサマリーを10本並列生成 ────────────────
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
         sum_futures = [ex.submit(_gen_summary, item) for item in results]
         results = [f.result() for f in concurrent.futures.as_completed(sum_futures)]
+
+    # ── Step3: 全カード間で重複する文を除去 ─────────────────────────
+    results = _dedup_summaries(results)
 
     # DRAFT_ANGLESの順番で並び替え
     order = {ak: i for i, (ak, _, _) in enumerate(DRAFT_ANGLES)}
