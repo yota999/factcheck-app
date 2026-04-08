@@ -1506,85 +1506,105 @@ elif step == 3:
         row1_variants = variants[:5]
         row2_variants = variants[5:] if len(variants) > 5 else []
 
-        def _extract_core_claim(draft: str) -> str:
-            """台本から核心となる主張文を抽出する（冒頭の挨拶・導入を除く）"""
-            skip_patterns = ("今日は", "こんにちは", "今回は", "みなさん", "はじめに",
-                              "この動画", "この台本", "この動画では", "#", "【", "---")
-            candidates = []
+        def _extract_bullets(draft: str, max_items: int = 4) -> list[str]:
+            """台本から内容を表す箇条書き項目を抽出する"""
+            bullets = []
+
+            # ① 台本中の箇条書き行（・／●／▶／→ で始まる行）を優先収集
             for line in draft.split("\n"):
                 line = line.strip()
-                if len(line) < 20:
+                if len(line) < 10:
                     continue
-                if any(line.startswith(p) for p in skip_patterns):
-                    continue
-                # 「実は」「なぜ」「〇〇すると」「〇〇しても」などの核心ワードを含む行を優先
-                priority_words = ("実は", "なぜ", "ほとんどの人", "多くの人", "じつは",
-                                   "間違い", "逆効果", "知らない", "だけで", "原因",
-                                   "理由", "秘密", "驚き", "本当の", "証明")
-                score = sum(1 for w in priority_words if w in line)
-                candidates.append((score, line))
-            if candidates:
-                candidates.sort(key=lambda x: -x[0])
-                best = candidates[0][1]
-                return best[:60] + "…" if len(best) > 60 else best
-            # fallbackとして非空行の最初のもの
-            for line in draft.split("\n"):
-                line = line.strip()
-                if len(line) >= 20 and not line.startswith("#"):
-                    return line[:60] + "…" if len(line) > 60 else line
-            return ""
+                if line.startswith(("・", "●", "▶", "→", "✅", "❌", "⚠", "◆", "◎", "○")):
+                    text = line.lstrip("・●▶→✅❌⚠◆◎○ ").strip()
+                    if len(text) >= 8:
+                        bullets.append(text[:45] + ("…" if len(text) > 45 else ""))
+                # 数字箇条書き（①②③ or 1. 2. 3.）
+                elif len(line) > 2 and (line[0] in "①②③④⑤⑥⑦⑧⑨" or
+                      (line[0].isdigit() and len(line) > 3 and line[1] in ".．、")):
+                    text = line[1:].lstrip(".．、 ").strip()
+                    if len(text) >= 8:
+                        bullets.append(text[:45] + ("…" if len(text) > 45 else ""))
+                if len(bullets) >= max_items:
+                    break
 
-        def _render_angle_row(row_variants, offset):
-            cols = st.columns(len(row_variants))
-            for ci_local, v in enumerate(row_variants):
-                ci = ci_local + offset
-                ak = v["angle_key"]
-                icon = ANGLE_ICONS.get(ak, "✍️")
-                txt_color, bg, border = ANGLE_COLORS.get(ak, ("#4F46E5", "#EEF2FF", "#C7D2FE"))
-                stance = ANGLE_STANCE.get(ak, "")
-                core = _extract_core_claim(v.get("draft", ""))
-                is_sel = (ci == sel_idx)
-                card_bg = bg if is_sel else "white"
-                card_border = f"2px solid {border}" if is_sel else "1px solid #E5E7EB"
-                shadow = f"0 0 0 3px {border}55" if is_sel else "none"
-                stance_html = stance.replace("\n", "<br>")
-                with cols[ci_local]:
-                    st.markdown(
-                        f'<div style="background:{card_bg};border:{card_border};'
-                        f'border-radius:12px;padding:10px 8px;'
-                        f'box-shadow:{shadow};min-height:130px;">'
-                        # アイコン＋切り口名
-                        f'<div style="text-align:center;">'
-                        f'<div style="font-size:1.3rem;">{icon}</div>'
-                        f'<div style="font-size:0.7rem;font-weight:700;color:{txt_color};'
-                        f'margin-top:3px;line-height:1.3;">{v["angle_name"]}</div>'
-                        f'</div>'
-                        # スタンス説明（固定）
-                        f'<div style="font-size:0.68rem;color:{txt_color};font-weight:600;'
-                        f'margin-top:7px;line-height:1.55;border-top:1px solid {border};'
-                        f'padding-top:6px;text-align:center;">'
-                        f'{stance_html}</div>'
-                        # 台本から抽出した核心文
-                        f'<div style="font-size:0.63rem;color:#9CA3AF;margin-top:5px;'
-                        f'line-height:1.45;border-top:1px dashed #E5E7EB;padding-top:5px;">'
-                        f'💬 {core}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-                    if st.button("選択" if not is_sel else "✓ 選択中",
-                                 key=f"sel_variant_{ci}",
-                                 type="primary" if is_sel else "secondary",
-                                 use_container_width=True):
-                        st.session_state.pop("sg_direct_edit_v2", None)
-                        st.session_state["sg_selected_variant_idx"] = ci
-                        st.session_state.sg_draft = variants[ci]["draft"]
-                        st.session_state.sg_edited_draft = variants[ci]["draft"]
-                        st.rerun()
+            # ② 箇条書きが少ない場合は【セクション名】行から補完
+            if len(bullets) < 2:
+                for line in draft.split("\n"):
+                    line = line.strip()
+                    if line.startswith("【") and "】" in line:
+                        label = line[line.index("【")+1:line.index("】")]
+                        if len(label) >= 3 and label not in ("はじめに", "まとめ", "おわりに", "導入", "結論"):
+                            bullets.append(label[:40])
+                    if len(bullets) >= max_items:
+                        break
 
-        _render_angle_row(row1_variants, 0)
-        if row2_variants:
-            st.markdown('<div style="margin-top:8px;"></div>', unsafe_allow_html=True)
-            _render_angle_row(row2_variants, 5)
+            # ③ それでも少ない場合は意味のある文を補完
+            if len(bullets) < 2:
+                skip = ("今日は", "こんにちは", "今回は", "みなさん", "この動画", "#", "【", "---")
+                key_words = ("実は", "なぜ", "ほとんど", "間違い", "逆効果", "原因", "理由", "方法", "ポイント")
+                for line in draft.split("\n"):
+                    line = line.strip()
+                    if len(line) < 15:
+                        continue
+                    if any(line.startswith(p) for p in skip):
+                        continue
+                    if any(w in line for w in key_words):
+                        bullets.append(line[:45] + ("…" if len(line) > 45 else ""))
+                    if len(bullets) >= max_items:
+                        break
+
+            return bullets[:max_items]
+
+        # ── 縦1列レイアウトで10パターンを全て表示 ────────────────────
+        for ci, v in enumerate(variants):
+            ak = v["angle_key"]
+            icon = ANGLE_ICONS.get(ak, "✍️")
+            txt_color, bg, border = ANGLE_COLORS.get(ak, ("#4F46E5", "#EEF2FF", "#C7D2FE"))
+            is_sel = (ci == sel_idx)
+            card_bg = bg if is_sel else "white"
+            card_border_style = f"2px solid {txt_color}" if is_sel else f"1px solid {border}"
+            shadow = f"0 4px 12px {border}88" if is_sel else "0 1px 4px rgba(0,0,0,0.06)"
+
+            bullets = _extract_bullets(v.get("draft", ""))
+            bullets_html = "".join(
+                f'<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:4px;">'
+                f'<span style="color:{txt_color};font-size:0.7rem;margin-top:1px;flex-shrink:0;">▶</span>'
+                f'<span style="font-size:0.78rem;color:#374151;line-height:1.55;">{b}</span>'
+                f'</div>'
+                for b in bullets
+            ) if bullets else f'<span style="font-size:0.75rem;color:#9CA3AF;">（内容を読み込み中）</span>'
+
+            col_card, col_btn = st.columns([10, 2])
+            with col_card:
+                st.markdown(
+                    f'<div style="background:{card_bg};border:{card_border_style};'
+                    f'border-radius:12px;padding:12px 16px;box-shadow:{shadow};'
+                    f'margin-bottom:2px;">'
+                    # ヘッダー行：アイコン＋切り口名
+                    f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+                    f'<span style="font-size:1.2rem;">{icon}</span>'
+                    f'<span style="font-size:0.85rem;font-weight:700;color:{txt_color};">'
+                    f'{v["angle_name"]}</span>'
+                    f'{"<span style=\'background:" + txt_color + ";color:white;font-size:0.65rem;padding:2px 8px;border-radius:10px;margin-left:6px;\'>選択中</span>" if is_sel else ""}'
+                    f'</div>'
+                    # 台本内容の箇条書き
+                    f'<div style="padding-left:4px;">{bullets_html}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with col_btn:
+                st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
+                if st.button("✓ 選択中" if is_sel else "選択",
+                             key=f"sel_variant_{ci}",
+                             type="primary" if is_sel else "secondary",
+                             use_container_width=True):
+                    st.session_state.pop("sg_direct_edit_v2", None)
+                    st.session_state["sg_selected_variant_idx"] = ci
+                    st.session_state.sg_draft = variants[ci]["draft"]
+                    st.session_state.sg_edited_draft = variants[ci]["draft"]
+                    st.rerun()
+            st.markdown('<div style="margin-bottom:6px;"></div>', unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("**② 台本を確認・編集してください**")
