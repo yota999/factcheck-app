@@ -189,7 +189,6 @@ def generate_themes(
     angle_name: str,
     model: str = "anthropic/claude-sonnet-4-6",
     keyword: str = "",
-    debate_feedback: str = "",
 ) -> list:
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
     char_range = "4500〜5000文字のYouTube台本" if script_type == "youtube" else "700〜800文字のリール動画台本"
@@ -200,7 +199,6 @@ def generate_themes(
     video_str = "\n".join(video_trends) or "（取得できませんでした）"
     youtube_str = "\n".join(youtube_trends) or "（取得できませんでした）"
     keyword_str = f"\n\n【キーワード指定（必ずこのテーマに関連させること）】\n「{keyword}」" if keyword.strip() else ""
-    debate_str = f"\n\n【AIたちの議論で指摘された改善点（必ず反映すること）】\n{debate_feedback}" if debate_feedback.strip() else ""
 
     # 40通り固有の切り口定義（10メイン角度 × 4サブ角度）
     ANGLE_SLOTS = [
@@ -259,7 +257,7 @@ def generate_themes(
     def _gen_one(slot_key: str, slot_name: str, slot_desc: str) -> str:
         prompt = f"""{persona}
 
-30〜50代女性向けダイエット・健康系の{char_range}テーマを1個だけ提案してください。{keyword_str}{debate_str}
+30〜50代女性向けダイエット・健康系の{char_range}テーマを1個だけ提案してください。{keyword_str}
 
 【この1テーマに使う切り口】「{slot_name}」
 {slot_desc}
@@ -332,13 +330,11 @@ def generate_ideas(
     good_elements: list,
     rejected_ideas: list,
     model: str = "anthropic/claude-sonnet-4-6",
-    debate_feedback: str = "",
 ) -> list:
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
     themes_str = " / ".join(selected_themes)
     good_str = "\n".join(f"・{e}" for e in good_elements) or "（まだデータなし）"
     rejected_str = "\n".join(f"・{i}" for i in rejected_ideas[-30:]) or "（なし）"
-    debate_str = f"\n\n【AIたちの議論で指摘された改善点（必ず反映すること）】\n{debate_feedback}" if debate_feedback.strip() else ""
 
     # 40通り固有の切り口（8カテゴリ × 5サブ角度）
     IDEA_SLOTS = [
@@ -397,7 +393,7 @@ def generate_ideas(
 
 選ばれたテーマ：「{themes_str}」
 
-このテーマに関するコンテンツアイデアを1個だけ提案してください。{debate_str}
+このテーマに関するコンテンツアイデアを1個だけ提案してください。
 
 【この1アイデアに使う切り口】「{slot_name}」
 {slot_desc}
@@ -452,476 +448,6 @@ def generate_ideas(
             except Exception:
                 results[idx] = ""
     return [t for t in results if t][:40]
-
-
-def multi_agent_debate(
-    items: list,
-    content_type: str,
-    script_type: str = "youtube",
-    gemini_persona: str = "",
-    context_desc: str = "",
-) -> list:
-    """
-    4ラウンド × 4AI = 16メッセージの順番式議論
-    R1: 問題点・弱点の指摘
-    R2: 具体的な改善案の提示
-    R3: さらに深掘り・追加批評
-    R4: 最終まとめ・断言（再生成への最終指令）
-    Returns: [{"ai", "side", "color", "bg", "icon", "text", "round"}]
-
-    Args:
-        items:          議論対象のリスト（タイトル・説明文・見出し等）
-        content_type:   コンテンツの種別ラベル（例: "テーマ"、"アイデア"、"タイトル"）
-        script_type:    "youtube" or "reel"（gemini_persona未指定時のデフォルトペルソナ切り替え用）
-        gemini_persona: Geminiのカスタムペルソナ（指定時はscript_typeを無視）
-        context_desc:   AIへの共通コンテキスト説明（例: "30〜50代女性向け健康系YouTube"）
-    """
-    items_str = "\n".join(
-        f"{i+1}. {t.split('｜')[0]}" for i, t in enumerate(items[:40])
-    )
-    is_reel = script_type != "youtube"
-    media = context_desc if context_desc else ("YouTube動画" if not is_reel else "リール動画（運動・家トレ系）")
-
-    # Geminiペルソナ: 引数で指定されていればそれを優先、なければscript_typeで判定
-    _persona_is_custom = bool(gemini_persona)  # カスタム指定かどうかのフラグ
-    if not gemini_persona:
-        if is_reel:
-            gemini_persona = """あなたはGemini。リール動画コンテンツの品質監査官（審査官）です。
-審査基準は厳格：
-❌ 即却下: 足首回し・首回し・深呼吸・軽いストレッチ・ウォーミングアップ系・曖昧な「体を動かす」系
-✅ 合格: スクワット・ヒップリフト・プランク・腹筋・踏み台昇降など具体的な筋トレ・家トレ種目が3つ以上登場し、「運動を続けることが大切」という結論へ自然に帰結する構成のみ。
-口調: 監査官として淡々と、しかし明確に「これは不合格」「これは合格」と断言する。"""
-        else:
-            gemini_persona = "あなたはGemini。トレンド分析と検索データに強いAIアナリストです。"
-
-    history: list[dict] = []
-
-    def _history_str() -> str:
-        return "\n".join(f"【{m['ai']} R{m['round']}】{m['text']}" for m in history)
-
-    def _call_safe(prompt: str, model: str, temp: float = 0.88) -> str:
-        try:
-            return _call_llm(prompt, model=model, temperature=temp, max_tokens=500)
-        except Exception as e:
-            return f"（エラー: {str(e)[:100]}）"
-
-    # ══════════════════════════════════════════════
-    # サイクル1 ラウンド1：問題点・弱点の指摘
-    # ══════════════════════════════════════════════
-
-    # R1-Claude
-    t = _call_safe(f"""あなたはClaudeです。バランス型AIとして、以下の{media}{content_type}リストを論理的に批評してください。
-
-{content_type}リスト:
-{items_str}
-
-【批評の観点】
-・似たような内容が重複している番号を具体的に列挙（例：「3番と17番は同じアプローチ」）
-・ターゲットに刺さらないと思う番号とその理由を2〜3つ
-・全体として何が足りないか一言で
-
-250字以内、口語体で。""", "anthropic/claude-sonnet-4-6")
-    history.append({"ai": "Claude", "side": "left", "color": "#7C3AED", "bg": "#F5F3FF", "icon": "🟣", "text": t, "round": 1})
-
-    # R1-ChatGPT
-    t = _call_safe(f"""あなたはChatGPTです。マーケター視点で、Claudeの批評を読み、クリック率・感情的引きの強さで補足してください。
-
-{content_type}リスト:
-{items_str}
-
---- 会話履歴 ---
-{_history_str()}
----
-
-【補足の観点】
-・Claudeが指摘しなかった問題（タイトルが弱い、緊急性がない等）を具体的な番号で指摘
-・ターゲットが「これ私のことだ！」と感じるか、2〜3番号を評価
-・改善の方向性を1行で
-
-250字以内、口語体で。""", "gpt-4o")
-    history.append({"ai": "ChatGPT", "side": "right", "color": "#059669", "bg": "#F0FDF4", "icon": "🟢", "text": t, "round": 1})
-
-    # R1-Gemini（カスタムペルソナ優先、なければscript_typeで判定）
-    if _persona_is_custom:
-        # カスタムペルソナ: ペルソナ自身の基準・観点に委ねる
-        gemini_r1_prompt = f"""{gemini_persona}
-
-以下の{media}{content_type}リストを、あなたの役割・基準で批評・審査してください。
-
-{content_type}リスト:
-{items_str}
-
---- 会話履歴 ---
-{_history_str()}
----
-
-あなたの基準に沿って、具体的な番号を挙げながら問題点を指摘してください。250字以内。"""
-    elif is_reel:
-        gemini_r1_prompt = f"""{gemini_persona}
-
-以下のリール動画{content_type}リストを審査してください。
-
-{content_type}リスト:
-{items_str}
-
---- 会話履歴 ---
-{_history_str()}
----
-
-【審査の観点】
-・「足首回し」「深呼吸」「軽いストレッチ」など受動的・曖昧な動作が含まれる番号を「❌不合格」と明示
-・「具体的な筋トレ種目3つ＋運動の大切さへの帰結」がある番号を「✅合格」と評価
-・不合格の比率と、それが与える品質への影響を一言断言
-
-250字以内。"""
-    else:
-        gemini_r1_prompt = f"""{gemini_persona}
-
-以下の{media}{content_type}リストをトレンドの視点から批評してください。
-
-{content_type}リスト:
-{items_str}
-
---- 会話履歴 ---
-{_history_str()}
----
-
-【指摘の観点】
-・2024〜2025年のトレンドで、このリストに入っていない重要な角度を2〜3個具体的に
-・「今この時期に見たい」という旬の切り口が何番に欠けているか
-・検索トレンドから見た弱点を一言
-
-250字以内、口語体で。"""
-    t = _call_safe(gemini_r1_prompt, "gemini/gemini-2.5-flash")
-    history.append({"ai": "Gemini", "side": "left", "color": "#1D4ED8", "bg": "#EFF6FF", "icon": "🔵", "text": t, "round": 1})
-
-    # R1-Grok
-    t = _call_safe(f"""あなたはGrokです。3人の批評を全部聞いた上で、遠慮なく本音を言ってください。
-
-{content_type}リスト:
-{items_str}
-
---- 会話履歴 ---
-{_history_str()}
----
-
-【本音の観点】
-・このリスト全体の一番致命的な問題を1つ断言する
-・「視聴者が絶対スルーする」番号を3つ挙げて理由を一言ずつ
-・3人の議論で見落とされていることがあれば追加
-
-250字以内、辛口・口語体で。""", "xai/grok-3-mini", temp=0.9)
-    history.append({"ai": "Grok", "side": "right", "color": "#111827", "bg": "#F9FAFB", "icon": "⚫", "text": t, "round": 1})
-
-    # ══════════════════════════════════════════════
-    # サイクル1 ラウンド2：具体的な改善案の提示
-    # ══════════════════════════════════════════════
-
-    # R2-Claude
-    t = _call_safe(f"""あなたはClaudeです。ラウンド1の議論を踏まえ、具体的な改善案を提示してください。
-
-{content_type}リスト:
-{items_str}
-
---- ラウンド1の議論 ---
-{_history_str()}
----
-
-【改善案】
-・削除すべき番号を2〜3つ挙げ、代わりに入れる具体的な新{content_type}タイトルを提案
-・新タイトルは「〇〇｜△△／□□／◇◇」形式で1〜2個
-・なぜそのタイトルの方がいいかを一言
-
-250字以内、口語体で。""", "anthropic/claude-sonnet-4-6")
-    history.append({"ai": "Claude", "side": "left", "color": "#7C3AED", "bg": "#F5F3FF", "icon": "🟣", "text": t, "round": 2})
-
-    # R2-ChatGPT
-    t = _call_safe(f"""あなたはChatGPTです。Claudeの改善案に同意・補足しながら、独自の追加提案をしてください。
-
-{content_type}リスト:
-{items_str}
-
---- 全会話 ---
-{_history_str()}
----
-
-【追加提案】
-・Claudeの提案で特に良い点を一言
-・さらに追加したい具体的な新{content_type}タイトルを「〇〇｜△△／□□／◇◇」形式で1〜2個
-・クリック率・感情的引きが高そうな理由を一言
-
-250字以内、口語体で。""", "gpt-4o")
-    history.append({"ai": "ChatGPT", "side": "right", "color": "#059669", "bg": "#F0FDF4", "icon": "🟢", "text": t, "round": 2})
-
-    # R2-Gemini
-    if _persona_is_custom:
-        gemini_r2_prompt = f"""{gemini_persona}
-
-ラウンド1の批評を踏まえ、あなたの基準で合格・改善する具体的な提案を出してください。
-
---- 全会話 ---
-{_history_str()}
----
-
-あなたの役割・基準に沿って、具体的な改善案を提案してください。250字以内。"""
-    elif is_reel:
-        gemini_r2_prompt = f"""{gemini_persona}
-
-ラウンド1の審査を踏まえ、合格基準を満たす代替{content_type}を提案してください。
-
---- 全会話 ---
-{_history_str()}
----
-
-【提案の出し方】
-・「具体的な筋トレ種目3つ（スクワット・プランク・ヒップリフト等）を紹介し、運動の大切さへ帰結する」構成の新タイトルを「〇〇｜△△／□□／◇◇」形式で2個
-・なぜこれが監査基準を満たすかを明示する
-
-250字以内。"""
-    else:
-        gemini_r2_prompt = f"""{gemini_persona}
-
-今旬のトレンドを活かした代替{content_type}を提案してください。
-
---- 全会話 ---
-{_history_str()}
----
-
-【提案】
-・2025年のトレンドと絡めた新{content_type}タイトルを「〇〇｜△△／□□／◇◇」形式で2個
-・なぜ今このタイミングで効果的かを数字・データを交えて一言
-
-250字以内、口語体で。"""
-    t = _call_safe(gemini_r2_prompt, "gemini/gemini-2.5-flash")
-    history.append({"ai": "Gemini", "side": "left", "color": "#1D4ED8", "bg": "#EFF6FF", "icon": "🔵", "text": t, "round": 2})
-
-    # R2-Grok
-    t = _call_safe(f"""あなたはGrokです。2ラウンドの議論を踏まえ、再生成に向けた中間まとめを出してください。
-
---- 全会話 ---
-{_history_str()}
----
-
-【中間まとめ】
-・議論を通じて明確になった「このリストの最大の問題」を1文で断言
-・全員の提案の中で「これだけは絶対採用すべき」改善点を2つ選んで理由を一言ずつ
-・次のラウンドでさらに深掘りすべき点を1つ
-
-250字以内、辛口で。""", "xai/grok-3-mini", temp=0.9)
-    history.append({"ai": "Grok", "side": "right", "color": "#111827", "bg": "#F9FAFB", "icon": "⚫", "text": t, "round": 2})
-
-    # ══════════════════════════════════════════════
-    # サイクル2 ラウンド3：深掘り・追加批評
-    # ══════════════════════════════════════════════
-
-    # R3-Claude
-    t = _call_safe(f"""あなたはClaudeです。ここまでの議論を全部読んだ上で、まだ誰も触れていない視点から追加批評をしてください。
-
-{content_type}リスト:
-{items_str}
-
---- これまでの全議論 ---
-{_history_str()}
----
-
-【追加批評】
-・既出の批評では見落とされていた問題点（構成・順序・差別化不足など）を具体的に
-・特に「このままでは埋もれる」と感じる番号とその理由
-・視聴者の行動変容（チャンネル登録・保存）に繋がりにくい理由を一言
-
-250字以内、口語体で。""", "anthropic/claude-sonnet-4-6")
-    history.append({"ai": "Claude", "side": "left", "color": "#7C3AED", "bg": "#F5F3FF", "icon": "🟣", "text": t, "round": 3})
-
-    # R3-ChatGPT
-    t = _call_safe(f"""あなたはChatGPTです。ここまでの全議論を踏まえ、競合チャンネルとの差別化視点で追加意見を。
-
-{content_type}リスト:
-{items_str}
-
---- これまでの全議論 ---
-{_history_str()}
----
-
-【差別化の視点】
-・同ジャンルの人気チャンネルと比べてこのリストにない独自性を指摘
-・「このチャンネルならでは」になれる切り口を具体的に2つ
-・Claudeの最新指摘への同意・補足を一言
-
-250字以内、口語体で。""", "gpt-4o")
-    history.append({"ai": "ChatGPT", "side": "right", "color": "#059669", "bg": "#F0FDF4", "icon": "🟢", "text": t, "round": 3})
-
-    # R3-Gemini
-    if _persona_is_custom:
-        gemini_r3_prompt = f"""{gemini_persona}
-
-第2回審査を実施します。ここまでの全議論を踏まえ、あなたの基準で追加指摘・深掘りをしてください。
-
-{content_type}リスト:
-{items_str}
-
---- これまでの全議論 ---
-{_history_str()}
----
-
-あなたの役割・基準に沿って、まだ見落とされている問題を具体的な番号で指摘してください。250字以内。"""
-    elif is_reel:
-        gemini_r3_prompt = f"""{gemini_persona}
-
-第2回審査を実施します。ここまでの議論を踏まえ、追加で不合格判定を下してください。
-
-{content_type}リスト:
-{items_str}
-
---- これまでの全議論 ---
-{_history_str()}
----
-
-【第2回審査】
-・まだ審査が甘かった番号を再チェックし、「❌再審査で不合格」「⚠️要修正」を明示
-・「運動3種目の紹介→運動の大切さへの帰結」が明確でない番号を全て列挙
-・このリストが合格するために最低限変えるべきことを断言
-
-250字以内。"""
-    else:
-        gemini_r3_prompt = f"""{gemini_persona}
-
-第2回分析です。ここまでの議論を踏まえ、さらなるトレンド視点を追加してください。
-
-{content_type}リスト:
-{items_str}
-
---- これまでの全議論 ---
-{_history_str()}
----
-
-【追加分析】
-・議論で出てきた改善案がトレンドと合致しているかを評価
-・見落とされている2025年の重要トレンドがあれば追加
-・このリストを最強にする「あと1つの視点」を断言
-
-250字以内、口語体で。"""
-    t = _call_safe(gemini_r3_prompt, "gemini/gemini-2.5-flash")
-    history.append({"ai": "Gemini", "side": "left", "color": "#1D4ED8", "bg": "#EFF6FF", "icon": "🔵", "text": t, "round": 3})
-
-    # R3-Grok
-    t = _call_safe(f"""あなたはGrokです。全員の2周目の意見を聞いた。率直に言う。
-
---- これまでの全議論 ---
-{_history_str()}
----
-
-【本音2周目】
-・2回の議論を経ても解決されていない根本的な問題を1つ断言
-・他の3人が遠慮して言えていないことを言う
-・「俺が作るなら絶対外す番号」を1つ選んで理由を一言
-
-250字以内、辛口で。""", "xai/grok-3-mini", temp=0.9)
-    history.append({"ai": "Grok", "side": "right", "color": "#111827", "bg": "#F9FAFB", "icon": "⚫", "text": t, "round": 3})
-
-    # ══════════════════════════════════════════════
-    # サイクル2 ラウンド4：最終まとめ・再生成指令
-    # ══════════════════════════════════════════════
-
-    # R4-Claude
-    t = _call_safe(f"""あなたはClaudeです。4ラウンドの議論全体を総括し、再生成への最終提言をしてください。
-
---- 全議論まとめ ---
-{_history_str()}
----
-
-【最終提言】
-・議論を通じて明確になった「このリストの本質的な問題」を2文でまとめる
-・再生成で必ず反映すべき具体的な改善点を3つ箇条書き
-・「こういうタイトルが1本あれば全体が締まる」という具体例を「〇〇｜△△／□□／◇◇」形式で1個
-
-300字以内、口語体で。""", "anthropic/claude-sonnet-4-6")
-    history.append({"ai": "Claude", "side": "left", "color": "#7C3AED", "bg": "#F5F3FF", "icon": "🟣", "text": t, "round": 4})
-
-    # R4-ChatGPT
-    t = _call_safe(f"""あなたはChatGPTです。全議論を踏まえた最終提案をしてください。
-
---- 全議論まとめ ---
-{_history_str()}
----
-
-【最終提案】
-・Claudeの総括に同意する点と、追加したい視点を1つ
-・再生成で採用してほしい具体的な新{content_type}タイトルを「〇〇｜△△／□□／◇◇」形式で2個（まだ提案されていないもの）
-・このリストを「チャンネル登録者が増える」ものにするための一言アドバイス
-
-300字以内、口語体で。""", "gpt-4o")
-    history.append({"ai": "ChatGPT", "side": "right", "color": "#059669", "bg": "#F0FDF4", "icon": "🟢", "text": t, "round": 4})
-
-    # R4-Gemini
-    if _persona_is_custom:
-        gemini_r4_prompt = f"""{gemini_persona}
-
-最終審査報告を出します。全4ラウンドの議論を踏まえ、あなたの役割として最終判定を下してください。
-
---- 全議論まとめ ---
-{_history_str()}
----
-
-【最終審査報告】
-・今回のリスト全体の合格率・総評を一言で断言
-・再生成で必ず守るべき基準を3つ箇条書き
-・「次のリストがすべて基準を満たすための一番重要なルール」を1文で断言
-
-300字以内。"""
-    elif is_reel:
-        gemini_r4_prompt = f"""{gemini_persona}
-
-最終審査報告を出します。
-
---- 全議論まとめ ---
-{_history_str()}
----
-
-【最終審査報告】
-・今回のリスト全体の合格率を概算で示す（例：「40本中約12本が合格基準を満たす」）
-・再生成で必ず守るべき審査基準を3つ箇条書き（具体的な運動種目名を含むこと等）
-・「次のリストがすべて合格するための一番重要なルール」を1文で断言
-
-300字以内。"""
-    else:
-        gemini_r4_prompt = f"""{gemini_persona}
-
-全議論を踏まえた最終トレンド分析を出してください。
-
---- 全議論まとめ ---
-{_history_str()}
----
-
-【最終トレンド分析】
-・議論で提案された改善案のうち、2025年トレンドと最も合致する案を選んで理由を述べる
-・再生成で取り入れるべきトレンドキーワードを3つ
-・このチャンネルが今後伸びるための一言アドバイス
-
-300字以内、口語体で。"""
-    t = _call_safe(gemini_r4_prompt, "gemini/gemini-2.5-flash")
-    history.append({"ai": "Gemini", "side": "left", "color": "#1D4ED8", "bg": "#EFF6FF", "icon": "🔵", "text": t, "round": 4})
-
-    # R4-Grok: 最終指令
-    t = _call_safe(f"""あなたはGrokです。全4ラウンドの議論を全部読んだ。最終指令を出す。
-
---- 全議論まとめ ---
-{_history_str()}
----
-
-【最終指令】
-・「次の生成では必ずこうしろ」という絶対ルールを3つ、命令口調で箇条書き
-・「これをやったら即アウト」という禁止事項を1つ断言
-・最終的に一番重要な改善点を「これだけ変えれば全部変わる」という形で1文で断言
-
-300字以内、辛口・命令口調で。""", "xai/grok-3-mini", temp=0.9)
-    history.append({"ai": "Grok", "side": "right", "color": "#111827", "bg": "#F9FAFB", "icon": "⚫", "text": t, "round": 4})
-
-    return history
-
-
-# 後方互換用エイリアス
-def multi_agent_review(items: list, content_type: str, script_type: str) -> list:
-    return multi_agent_debate(items, content_type, script_type)
 
 
 def generate_draft(
@@ -1267,12 +793,11 @@ def auto_correct_script(original: str, fc_results: list, model: str = "anthropic
 {issues_text}
 
 【修正のルール】
-- ❌問題あり・⚠️要注意と指摘された箇所を中心に修正する
-- 具体的な数字で複数AIが問題視しているものは「諸説あります」「一説によると」など曖昧な表現に変える
-- 明確に誤りと判定されたものは修正または削除する
+- ❌複数のAIが「誤り」「根拠なし」「事実として成立しない」と判定した箇所は、その文・センテンスごと台本から完全に削除する（言い換えや曖昧化ではなく削除）
+- ⚠️要注意と指摘された箇所（可能性はあるが不確かなもの）は「〜の可能性があります」「〜とも言われています」「一説によると」など可能性・傾向として表現する
 - ✅正確と判定された箇所は変更しない
-- 文体・全体の流れは元の台本を維持する
-- 修正箇所が分かるよう、変更した部分の説明も最後に箇条書きで添える
+- 文体・全体の流れは元の台本を維持する（削除により文章がつながらなくなる場合は自然につなぎ直す）
+- 修正箇所が分かるよう、変更した部分の説明も最後に箇条書きで添える（削除した箇所は「削除」と明記）
 
 【出力形式】
 ## 修正版台本
@@ -1416,11 +941,10 @@ def auto_correct_from_discussion(original: str, discussion: list,
 {discussion_text}
 
 【修正ルール】
-- 討論で複数のAIが問題視した箇所は必ず修正する
-- 根拠のない数字・誇大な主張は「一説によると」「〜とも言われています」などに変える
-- 「絶対」「必ず」など断定表現で根拠が薄いものは表現を緩める
+- 討論で複数のAIが「誤り」「根拠なし」「事実として成立しない」と合意した箇所は、その文・センテンスごと台本から完全に削除する（言い換えや曖昧化ではなく削除）
+- 討論で「可能性はあるが不確か」「要注意」と指摘された箇所は「〜の可能性があります」「一説によると」「〜とも言われています」など可能性・傾向として表現する
 - 問題なしと合意された箇所は変更しない
-- 文体・構成・全体の流れ・文字数は元の台本を維持する
+- 文体・構成・全体の流れは元の台本を維持する（削除により文章がつながらなくなる場合は自然につなぎ直す）
 
 【出力形式】
 ## 修正版台本
