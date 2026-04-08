@@ -618,54 +618,60 @@ def generate_draft_variants(
 
 【必須ルール】
 ・文字数：{char_min}〜{char_max}文字
-・改行を適切に入れて読みやすく
-
-【出力フォーマット（必ずこの順序・この見出しで出力すること）】
-
-<<SUMMARY>>
-・（この台本で話すメインの主張・論点を1行で。挨拶・導入ではなく「何を主張するか」）
-・（視聴者にとっての最大のポイント・驚きを1行で）
-・（この台本で紹介する具体的な解決策・行動・方法を1行で）
-<<END_SUMMARY>>
-
-<<DRAFT>>
-（ここから台本本文のみ。{char_min}〜{char_max}文字）
-<<END_DRAFT>>"""
+・台本本文のみ出力（説明・補足不要）
+・改行を適切に入れて読みやすく"""
         try:
-            raw = _call_llm(prompt, model=model, temperature=0.72, max_tokens=max_tok + 300)
+            draft = _call_llm(prompt, model=model, temperature=0.72, max_tokens=max_tok)
         except Exception as e:
-            return {"angle_key": angle_key, "angle_name": angle_name,
-                    "draft": f"（生成エラー: {e}）", "summary": []}
+            draft = f"（生成エラー: {e}）"
+        return {"angle_key": angle_key, "angle_name": angle_name, "draft": draft, "summary": []}
 
-        # サマリーと台本本文を分離してパース
-        summary: list[str] = []
-        draft = raw
+    def _gen_summary(item: dict) -> dict:
+        """台本から3行の内容サマリーを生成して summary フィールドに追加する"""
+        draft = item.get("draft", "")
+        if not draft or draft.startswith("（生成エラー"):
+            return item
+        angle_name = item.get("angle_name", "")
+        prompt = f"""以下の台本を読んで、「この台本では何を話しているか」を視聴者目線で3行にまとめてください。
 
-        if "<<SUMMARY>>" in raw and "<<END_SUMMARY>>" in raw:
-            s_start = raw.index("<<SUMMARY>>") + len("<<SUMMARY>>")
-            s_end   = raw.index("<<END_SUMMARY>>")
-            summary_block = raw[s_start:s_end].strip()
-            for line in summary_block.split("\n"):
-                line = line.strip().lstrip("・●▶→- ").strip()
-                if len(line) >= 8:
-                    summary.append(line[:60] + ("…" if len(line) > 60 else ""))
+【台本（抜粋）】
+{draft[:800]}
 
-        if "<<DRAFT>>" in raw and "<<END_DRAFT>>" in raw:
-            d_start = raw.index("<<DRAFT>>") + len("<<DRAFT>>")
-            d_end   = raw.index("<<END_DRAFT>>")
-            draft = raw[d_start:d_end].strip()
-        elif "<<DRAFT>>" in raw:
-            draft = raw[raw.index("<<DRAFT>>") + len("<<DRAFT>>"):].strip()
-        elif "<<SUMMARY>>" in raw:
-            # サマリーより後ろ全体を台本とみなす
-            draft = raw[raw.index("<<END_SUMMARY>>") + len("<<END_SUMMARY>>"):].strip()
+【ルール】
+・挨拶・導入・締めの言葉は含めないこと
+・「この台本では〜」のような前置きは不要
+・「〇〇が原因で△△になる」「〇〇をやめると△△が変わる」のように、具体的な主張・内容・行動を書くこと
+・各行は40文字以内
+・「・」で始まる3行だけを出力すること（他の文章は一切不要）
 
-        return {"angle_key": angle_key, "angle_name": angle_name,
-                "draft": draft, "summary": summary}
+例：
+・食べる量を減らしても痩せない本当の原因はレプチン低下にある
+・筋肉量が落ちると基礎代謝が1日200kcal以上低下する
+・週2回のスクワットだけで3週間後に代謝が回復する"""
+        try:
+            resp = _call_llm(prompt, model="anthropic/claude-sonnet-4-6",
+                             temperature=0.5, max_tokens=200)
+            lines = []
+            for line in resp.split("\n"):
+                line = line.strip().lstrip("・●▶→- 　").strip()
+                if len(line) >= 10:
+                    lines.append(line[:55] + ("…" if len(line) > 55 else ""))
+                if len(lines) >= 3:
+                    break
+            item["summary"] = lines
+        except Exception:
+            item["summary"] = []
+        return item
 
+    # ── Step1: 台本を10本並列生成 ─────────────────────────────────────
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
         futures = [ex.submit(_gen_one, ak, an, ad) for ak, an, ad in DRAFT_ANGLES]
         results = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+    # ── Step2: サマリーを10本並列生成 ────────────────────────────────
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+        sum_futures = [ex.submit(_gen_summary, item) for item in results]
+        results = [f.result() for f in concurrent.futures.as_completed(sum_futures)]
 
     # DRAFT_ANGLESの順番で並び替え
     order = {ak: i for i, (ak, _, _) in enumerate(DRAFT_ANGLES)}
