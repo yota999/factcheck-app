@@ -651,14 +651,15 @@ def generate_draft_variants(
     ref_scripts: list,
     model: str = "anthropic/claude-sonnet-4-6",
     edit_improvements: list = None,
+    source_text: str = "",
 ) -> list:
     """10種のアングルで台本を並列生成。[{"angle_key","angle_name","draft"},...] を返す"""
     import concurrent.futures
 
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
     structure = YOUTUBE_STRUCTURE if script_type == "youtube" else REEL_STRUCTURE
-    themes_str = " / ".join(selected_themes)
-    ideas_str = "\n".join(f"・{i}" for i in selected_ideas)
+    themes_str = " / ".join(selected_themes) if selected_themes else "（30〜50代女性向けダイエット・健康系のテーマでAIが自由に選定）"
+    ideas_str = "\n".join(f"・{i}" for i in selected_ideas) if selected_ideas else "（アイデアはAIが切り口に合わせて自由に発想）"
     good_str = "\n".join(f"・{e}" for e in good_elements) or "（データなし）"
     bad_str = "\n".join(f"・{p}" for p in bad_patterns) or "（データなし）"
     # ユーザー編集から学習した改善ルール
@@ -669,6 +670,16 @@ def generate_draft_variants(
         ref_str += f"\n【参考台本{i}（冒頭抜粋）】\n{ref[:600]}\n"
     char_min, char_max = (4500, 5000) if script_type == "youtube" else (700, 800)
     max_tok = 10000 if script_type == "youtube" else 2000
+
+    source_section = f"""【元となる文章（この内容をもとに台本を作成する）】
+{source_text[:3000]}
+
+""" if source_text.strip() else f"""【テーマ】{themes_str}
+
+【使用するアイデア（これらを盛り込む）】
+{ideas_str}
+
+"""
 
     def _gen_one(angle_key, angle_name, angle_desc):
         improve_section = f"""
@@ -682,12 +693,7 @@ def generate_draft_variants(
 
 【切り口の特徴】{angle_desc}
 
-【テーマ】{themes_str}
-
-{structure}
-
-【使用するアイデア（これらを盛り込む）】
-{ideas_str}
+{source_section}{structure}
 
 【過去に好評だった要素（積極的に取り入れる）】
 {good_str}

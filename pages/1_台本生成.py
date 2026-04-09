@@ -575,9 +575,9 @@ def _init():
         "sg_step": 0,
         "sg_script_type": "youtube",
         "sg_themes": [],
-        "sg_selected_themes": [],
+        "sg_selected_themes": [],  # 互換性のため残す（空リスト）
         "sg_ideas": [],
-        "sg_selected_ideas": [],
+        "sg_selected_ideas": [],   # 互換性のため残す（空リスト）
         "sg_draft": "",
         "sg_edited_draft": "",
         "sg_final_result": "",
@@ -603,6 +603,8 @@ def _init():
         "sg_brushup_generating": False,
         # テーマピッカー開閉フラグ
         "sg_theme_picker_open": False,
+        # 元となる文章（ソーステキスト）
+        "sg_source_text": "",
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -744,646 +746,75 @@ if step == 0:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── タイプ選択ボタンが押されたら自動でテーマ生成を開始 ──
-    auto_gen = st.session_state.get("sg_auto_gen_themes", False)
-    if auto_gen:
-        st.session_state["sg_auto_gen_themes"] = False  # フラグリセット
-    if auto_gen or st.button("テーマを自動生成する →", type="primary", use_container_width=True):
+    # ── タイプ選択後、台本生成へ直接進む ──
+    if st.button("台本生成を開始する →", type="primary", use_container_width=True,
+                 disabled=(current_type == "")):
         st.session_state.sg_script_type = script_type
         try:
-            from memory_manager import get_used_themes, get_next_angle, get_next_ai, get_rejected_themes
-            used_themes = get_used_themes(script_type)
-            rejected_themes = get_rejected_themes(script_type)
+            from memory_manager import get_next_angle, get_next_ai
             angle_key, angle_name = get_next_angle(script_type)
             model_id, model_name = get_next_ai(script_type)
         except Exception:
-            used_themes, rejected_themes = [], []
             angle_key, angle_name = "science", "科学・データ根拠型"
             model_id, model_name = "anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"
-
         st.session_state.sg_current_angle = (angle_key, angle_name)
         st.session_state.sg_current_ai = (model_id, model_name)
-
-        with st.spinner("Serper + YouTube Data API でトレンドを収集中..."):
-            try:
-                from script_crew import fetch_all_trends
-                trends, video_trends, youtube_trends = fetch_all_trends()
-            except Exception:
-                trends, video_trends, youtube_trends = [], [], []
-
-        with st.spinner(f"{model_name} で10角度×4テーマ=40個を並列生成中...（1〜2分かかります）"):
-            try:
-                from script_crew import generate_themes
-                themes = generate_themes(
-                    script_type=script_type,
-                    used_themes=used_themes,
-                    rejected_themes=rejected_themes,
-                    trends=trends,
-                    video_trends=video_trends,
-                    youtube_trends=youtube_trends,
-                    angle_name=angle_name,
-                    model=model_id,
-                )
-                st.session_state.sg_themes = themes
-                st.session_state.sg_step = 1
-                st.rerun()
-            except Exception as e:
-                import traceback
-                st.error(f"エラーが発生しました: {e}\n\nTraceback (most recent call last):\n{traceback.format_exc()}")
+        st.session_state.sg_step = 1
+        st.rerun()
 
 
 # ════════════════════════════════════════════════════════════════════
-# Step 1: テーマ選択
+# Step 1: 元となる文章を入力
 # ════════════════════════════════════════════════════════════════════
 elif step == 1:
-    angle_name = st.session_state.sg_current_angle[1]
-    _, ai_name = st.session_state.sg_current_ai
+    script_type = st.session_state.sg_script_type
+    type_label = "YouTube 台本" if script_type == "youtube" else "リール台本"
 
-    st.markdown('<div class="section-header">Step 2 ／ テーマを1〜3個選択</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Step 2 ／ 元となる文章を入力</div>', unsafe_allow_html=True)
 
-    st.markdown(f'''<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
-<div style="background:#EEF2FF;border-radius:8px;padding:6px 14px;font-size:0.82rem;color:#4338CA;font-weight:600;">🎯 アングル: {angle_name}</div>
-<div style="background:#F0FDF4;border-radius:8px;padding:6px 14px;font-size:0.82rem;color:#059669;font-weight:600;">🤖 担当AI: {ai_name}</div>
-</div>''', unsafe_allow_html=True)
+    st.markdown("""
+<div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:12px;padding:14px 18px;margin-bottom:16px;">
+<div style="font-weight:700;color:#0369A1;margin-bottom:6px;">📄 どんな文章でも台本の素材になります</div>
+<div style="font-size:0.85rem;color:#0C4A6E;line-height:1.7;">
+・ブログ記事・SNS投稿・メモ書き・論文の要約<br>
+・参考にしたいYouTube動画の書き起こし<br>
+・自分の体験談・アイデアのラフスケッチ<br>
+・キーワードや箇条書きだけでもOK
+</div>
+</div>
+""", unsafe_allow_html=True)
 
-    themes = st.session_state.sg_themes
-    CIRCLE_NUMS_T = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
-    import re as _re_theme
-    def _strip_num_t(text):
-        return _re_theme.sub(r'^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]\s*', '', text)
-    def _add_num_t(lst):
-        result = []
-        for idx, item in enumerate(lst):
-            clean = _strip_num_t(item)
-            if idx < len(CIRCLE_NUMS_T):
-                result.append(f"{CIRCLE_NUMS_T[idx]} {clean}")
-            else:
-                result.append(clean)
-        return result
-    display_themes = _add_num_t(themes)
+    source_text = st.text_area(
+        "元となる文章を入力してください",
+        value=st.session_state.get("sg_source_text", ""),
+        height=300,
+        placeholder="ここに文章を貼り付けるか、直接入力してください...\n\n例：\n・最近の研究で、睡眠不足がダイエットに悪影響を与えることが分かった\n・コルチゾールが増えると脂肪が蓄積しやすくなる\n・1日7時間以上の睡眠が理想的",
+        key="sg_source_text_input",
+    )
 
-    if not themes:
-        st.error("テーマ生成に失敗しました。戻って再試行してください。")
-    else:
-        selected_plain = st.session_state.sg_selected_themes or []
-        n_sel = len(selected_plain)
-
-        # ── 選択ステータスバー ────────────────────────────────────
-        if selected_plain:
-            chips_html = "".join([
-                f'<div style="display:inline-flex;align-items:center;gap:6px;'
-                f'background:linear-gradient(135deg,#6366F1,#8B5CF6);border-radius:24px;'
-                f'padding:6px 16px;margin:3px 6px 3px 0;box-shadow:0 2px 8px rgba(99,102,241,.25);">'
-                f'<span style="font-size:0.82rem;color:white;font-weight:600;">{t.split("｜")[0][:25]}</span>'
-                f'</div>'
-                for t in selected_plain
-            ])
-            st.markdown(
-                f'<div style="background:white;border:1px solid #E5E7EB;border-radius:14px;'
-                f'padding:12px 18px;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,.04);">'
-                f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
-                f'<span style="font-size:0.78rem;color:#6B7280;font-weight:600;text-transform:uppercase;'
-                f'letter-spacing:.06em;">選択中のテーマ</span>'
-                f'<span style="background:#EEF2FF;color:#4338CA;font-weight:700;font-size:0.82rem;'
-                f'padding:3px 12px;border-radius:20px;">{n_sel}/3</span></div>'
-                f'<div style="line-height:2.2;">{chips_html}</div></div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                '<div style="background:linear-gradient(135deg,#FFF7ED,#FFFBEB);border:1px solid #FDE68A;'
-                'border-radius:14px;padding:14px 18px;margin-bottom:18px;">'
-                '<div style="font-weight:600;color:#92400E;font-size:0.88rem;">'
-                '👇 カードをタップしてテーマを選択してください（最大3個）</div></div>',
-                unsafe_allow_html=True,
-            )
-
-        # ── キーワードでテーマ再生成 ──────────────────────────────────
-        st.markdown(
-            '<div style="background:white;border:1px solid #E0E7FF;border-radius:14px;'
-            'padding:14px 18px;margin-bottom:16px;">'
-            '<div style="font-size:0.82rem;color:#4338CA;font-weight:600;margin-bottom:8px;">'
-            '🔍 キーワードでテーマを絞り込む</div></div>',
-            unsafe_allow_html=True,
-        )
-        kw_col, btn_col = st.columns([5, 1])
-        with kw_col:
-            theme_keyword = st.text_input(
-                "キーワード",
-                placeholder="例：糖質制限、筋トレ、更年期、睡眠、腸活...",
-                label_visibility="collapsed",
-                key="sg_theme_keyword",
-            )
-        with btn_col:
-            kw_regen = st.button("再生成", key="sg_kw_regen", use_container_width=True,
-                                 disabled=not theme_keyword.strip())
-
-        if kw_regen and theme_keyword.strip():
+    col_bk, col_next = st.columns([1, 3])
+    with col_bk:
+        if st.button("← 戻る", key="step1_back"):
+            st.session_state.sg_step = 0
+            st.rerun()
+    with col_next:
+        if st.button("🚀 台本を生成する →", type="primary", use_container_width=True,
+                     disabled=(len(source_text.strip()) < 10)):
+            st.session_state.sg_source_text = source_text.strip()
             try:
-                from memory_manager import get_used_themes, get_next_angle, get_next_ai, get_rejected_themes
-                used_themes_kw = get_used_themes(st.session_state.sg_script_type)
-                rejected_themes_kw = get_rejected_themes(st.session_state.sg_script_type)
-                angle_key_kw, angle_name_kw = get_next_angle(st.session_state.sg_script_type)
-                model_id_kw, _ = get_next_ai(st.session_state.sg_script_type)
+                from memory_manager import get_next_angle, get_next_ai
+                angle_key, angle_name = get_next_angle(script_type)
+                model_id, model_name = get_next_ai(script_type)
             except Exception:
-                used_themes_kw, rejected_themes_kw = [], []
-                angle_key_kw, angle_name_kw = "science", "科学・データ根拠型"
-                model_id_kw = "anthropic/claude-sonnet-4-6"
-
-            with st.spinner(f"「{theme_keyword}」で10角度×4テーマ=40個を並列生成中..."):
-                try:
-                    from script_crew import fetch_all_trends, generate_themes
-                    trends_kw, video_trends_kw, youtube_trends_kw = fetch_all_trends()
-                    new_themes_kw = generate_themes(
-                        script_type=st.session_state.sg_script_type,
-                        used_themes=used_themes_kw,
-                        rejected_themes=rejected_themes_kw,
-                        trends=trends_kw, video_trends=video_trends_kw,
-                        youtube_trends=youtube_trends_kw,
-                        angle_name=angle_name_kw, model=model_id_kw,
-                        keyword=theme_keyword.strip(),
-                    )
-                    st.session_state.sg_themes = new_themes_kw
-                    st.session_state.sg_selected_themes = []
-                    st.session_state.sg_current_angle = (angle_key_kw, angle_name_kw)
-                    st.session_state["sg_process_done_toast"] = f"「{theme_keyword}」のテーマ生成完了"
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"エラー: {e}")
-
-        # ── テーマカードグリッド（常に表示）──────────────────────────
-        COLS = 2
-        for row_start in range(0, len(themes), COLS):
-            row_themes = themes[row_start:row_start + COLS]
-            cols_g = st.columns(COLS)
-            for ci, (col_g, theme_raw) in enumerate(zip(cols_g, row_themes)):
-                idx = row_start + ci
-                plain = _strip_num_t(theme_raw)
-                is_sel = plain in selected_plain
-                num_label = CIRCLE_NUMS_T[idx] if idx < len(CIRCLE_NUMS_T) else str(idx + 1)
-
-                # タイトルと補足に分割
-                if '｜' in plain:
-                    title_p, sub_p = plain.split('｜', 1)
-                    title_p = title_p.strip(); sub_p = sub_p.strip()
-                else:
-                    title_p = plain; sub_p = ""
-
-                with col_g:
-                    if is_sel:
-                        card_bg = "linear-gradient(135deg,#DBEAFE 0%,#C7D2FE 100%)"
-                        card_bdr = "2px solid #3B82F6"
-                        card_shadow = "0 4px 16px rgba(59,130,246,.25)"
-                        num_bg = "#3B82F6"; num_color = "white"
-                        title_color = "#1E40AF"
-                        sub_color = "#1E40AF"
-                        bullet_bg = "#BFDBFE"
-                        badge = ('<div style="position:absolute;top:10px;right:12px;background:#3B82F6;'
-                                 'color:white;border-radius:20px;padding:2px 10px;font-size:0.72rem;'
-                                 'font-weight:700;box-shadow:0 2px 6px rgba(59,130,246,.3);">✓ 選択中</div>')
-                    else:
-                        card_bg = "linear-gradient(135deg,#FAFBFF 0%,#F3F0FF 100%)"
-                        card_bdr = "1px solid #E0E7FF"
-                        card_shadow = "0 2px 8px rgba(99,102,241,.06)"
-                        num_bg = "#6366F1"; num_color = "white"
-                        title_color = "#1E1B4B"
-                        sub_color = "#4B5563"
-                        bullet_bg = "#EDE9FE"
-                        badge = ""
-
-                    # 補足テキストを「／」で分割して箇条書き化
-                    if sub_p:
-                        points = [p.strip() for p in sub_p.replace('/', '／').split('／') if p.strip()]
-                        bullets_html = "".join(
-                            f'<div style="display:flex;align-items:flex-start;gap:6px;margin-top:5px;">'
-                            f'<span style="background:{bullet_bg};color:{sub_color};border-radius:4px;'
-                            f'padding:1px 6px;font-size:0.68rem;font-weight:600;flex-shrink:0;">▸</span>'
-                            f'<span style="font-size:0.78rem;color:{sub_color};line-height:1.5;">{pt}</span>'
-                            f'</div>'
-                            for pt in points
-                        )
-                        sub_html = f'<div style="margin-top:10px;">{bullets_html}</div>'
-                    else:
-                        sub_html = ""
-
-                    st.markdown(
-                        f'<div style="position:relative;background:{card_bg};border:{card_bdr};'
-                        f'border-radius:16px;padding:18px 20px;min-height:100px;margin-bottom:6px;'
-                        f'box-shadow:{card_shadow};transition:all .15s ease;">'
-                        f'{badge}'
-                        f'<div style="display:flex;align-items:flex-start;gap:10px;">'
-                        f'<div style="background:{num_bg};color:{num_color};border-radius:50%;'
-                        f'width:28px;height:28px;display:flex;align-items:center;justify-content:center;'
-                        f'font-size:0.78rem;font-weight:700;flex-shrink:0;">{num_label}</div>'
-                        f'<div style="flex:1;min-width:0;">'
-                        f'<div style="font-weight:700;font-size:0.88rem;color:{title_color};'
-                        f'line-height:1.45;">{title_p}</div>'
-                        f'{sub_html}'
-                        f'</div></div></div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    # ── ボタン行：選択 / NG ──
-                    is_full = (not is_sel and n_sel >= 3)
-                    bc1, bc2 = st.columns([3, 1])
-                    with bc1:
-                        btn_lbl = "✓ 選択中（解除）" if is_sel else "＋ 選択する"
-                        btn_type = "primary" if is_sel else "secondary"
-                        if st.button(btn_lbl, key=f"sg_tc_{idx}",
-                                     disabled=is_full, use_container_width=True, type=btn_type):
-                            if is_sel:
-                                st.session_state.sg_selected_themes = [t for t in selected_plain if t != plain]
-                            else:
-                                st.session_state.sg_selected_themes = selected_plain + [plain]
-                            st.rerun()
-                    with bc2:
-                        if st.button("🚫", key=f"sg_ng_{idx}", help="このテーマをNG登録",
-                                     use_container_width=True):
-                            try:
-                                from memory_manager import add_rejected_themes
-                                add_rejected_themes([plain], st.session_state.sg_script_type)
-                                # テーマリストから削除
-                                st.session_state.sg_themes = [t for t in st.session_state.sg_themes
-                                                              if _strip_num_t(t) != plain]
-                                st.session_state.sg_selected_themes = [t for t in selected_plain if t != plain]
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"NG登録エラー: {e}")
-
-        # ── カスタムテーマ追加 ──
-        st.markdown(
-            '<div style="background:white;border:1px dashed #C7D2FE;border-radius:14px;'
-            'padding:14px 18px;margin-top:10px;">'
-            '<div style="font-size:0.82rem;color:#4338CA;font-weight:600;margin-bottom:8px;">'
-            '✏️ リストにないテーマを追加</div></div>',
-            unsafe_allow_html=True,
-        )
-        c1, c2 = st.columns([5, 1])
-        with c1:
-            custom_theme = st.text_input("カスタムテーマ",
-                placeholder="例：更年期後の筋肉量低下を防ぐ方法",
-                label_visibility="collapsed", key="sg_custom_theme_input")
-        with c2:
-            if st.button("＋追加", key="sg_add_theme",
-                         disabled=not custom_theme.strip() or n_sel >= 3,
-                         use_container_width=True):
-                new_t = custom_theme.strip()
-                if new_t not in st.session_state.sg_themes:
-                    st.session_state.sg_themes.append(new_t)
-                current_sel = list(st.session_state.sg_selected_themes or [])
-                if new_t not in current_sel:
-                    current_sel.append(new_t)
-                st.session_state.sg_selected_themes = current_sel
-                st.rerun()
-        if n_sel >= 3:
-            st.caption("（3個選択済みのため追加できません）")
-
-        # ── 後続ロジック用 ──
-        selected = st.session_state.sg_selected_themes or []
-
-        # ── ナビゲーションボタン（議論より先に描画） ────────────────────
-        st.markdown("<br>", unsafe_allow_html=True)
-        col_back, col_regen, col_next = st.columns([1, 1, 2])
-        with col_back:
-            if st.button("← 戻る", key="sg_step1_back"):
-                st.session_state.sg_step = 0
-                st.rerun()
-        with col_regen:
-            if st.button("🔄 テーマを再生成", key="sg_step1_regen"):
-                try:
-                    from memory_manager import get_used_themes, get_next_angle, get_next_ai, get_rejected_themes
-                    used_themes = get_used_themes(st.session_state.sg_script_type)
-                    rejected_themes = get_rejected_themes(st.session_state.sg_script_type)
-                    angle_key, angle_name = get_next_angle(st.session_state.sg_script_type)
-                    model_id, model_name = get_next_ai(st.session_state.sg_script_type)
-                except Exception:
-                    used_themes, rejected_themes = [], []
-                    angle_key, angle_name = "science", "科学・データ根拠型"
-                    model_id, model_name = "anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"
-
-                st.session_state.sg_current_angle = (angle_key, angle_name)
-                st.session_state.sg_current_ai = (model_id, model_name)
-
-                with st.spinner(f"{model_name} で10角度×4テーマ=40個を並列再生成中..."):
-                    try:
-                        from script_crew import fetch_all_trends, generate_themes
-                        trends, video_trends, youtube_trends = fetch_all_trends()
-                        themes = generate_themes(
-                            script_type=st.session_state.sg_script_type,
-                            used_themes=used_themes, rejected_themes=rejected_themes,
-                            trends=trends, video_trends=video_trends,
-                            youtube_trends=youtube_trends, angle_name=angle_name,
-                            model=model_id,
-                        )
-                        st.session_state.sg_themes = themes
-                        st.session_state.sg_selected_themes = []
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"エラー: {e}")
-        with col_next:
-            if st.button("アイデア40個を生成 →", key="sg_step1_next", type="primary", disabled=len(selected) == 0,
-                         use_container_width=True):
-                # 丸数字を除去して内部データとして保存
-                st.session_state.sg_selected_themes = [_strip_num_t(x) for x in selected]
-                angle_name = st.session_state.sg_current_angle[1]
-                model_id = st.session_state.sg_current_ai[0]
-                try:
-                    from memory_manager import get_good_elements, get_rejected_ideas
-                    good_elements = get_good_elements(st.session_state.sg_script_type)
-                    rejected_ideas = get_rejected_ideas(st.session_state.sg_script_type)
-                except Exception:
-                    good_elements, rejected_ideas = [], []
-
-                with st.spinner("コンテンツアイデアを40個生成中..."):
-                    try:
-                        from script_crew import generate_ideas
-                        ideas = generate_ideas(
-                            script_type=st.session_state.sg_script_type,
-                            selected_themes=st.session_state.sg_selected_themes,
-                            angle_name=angle_name,
-                            good_elements=good_elements, rejected_ideas=rejected_ideas,
-                            model=model_id,
-                        )
-                        st.session_state.sg_ideas = ideas
-                        st.session_state.sg_step = 2
-                        st.rerun()
-                    except Exception as e:
-                        import traceback
-                        st.error(f"エラー:\n{e}\n\n{traceback.format_exc()}")
-
-
-
-# ════════════════════════════════════════════════════════════════════
-# Step 2: アイデア選択
-# ════════════════════════════════════════════════════════════════════
-elif step == 2:
-    themes_str = " / ".join(st.session_state.sg_selected_themes)
-    _, ai_name = st.session_state.sg_current_ai
-
-    st.markdown('<div class="section-header">Step 3 ／ アイデアを3個選択</div>', unsafe_allow_html=True)
-
-    st.markdown(f'''<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
-<div style="background:#FEF3C7;border-radius:8px;padding:6px 14px;font-size:0.82rem;color:#92400E;font-weight:600;">📌 テーマ: {themes_str}</div>
-<div style="background:#F0FDF4;border-radius:8px;padding:6px 14px;font-size:0.82rem;color:#059669;font-weight:600;">🤖 担当AI: {ai_name}</div>
-</div>''', unsafe_allow_html=True)
-
-    ideas = st.session_state.sg_ideas
-    # 丸数字プレフィックスを付与（表示用）
-    CIRCLE_NUMS = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
-    import re as _re_idea
-    def _strip_num(text):
-        """丸数字プレフィックスを除去して元のテキストに戻す"""
-        return _re_idea.sub(r'^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]\s*', '', text)
-    def _add_num(idea_list):
-        """アイデアに丸数字を付与（既に付いていればスキップ）"""
-        result = []
-        for idx, idea in enumerate(idea_list):
-            clean = _strip_num(idea)
-            if idx < len(CIRCLE_NUMS):
-                result.append(f"{CIRCLE_NUMS[idx]} {clean}")
-            else:
-                result.append(clean)
-        return result
-    display_ideas = _add_num(ideas)
-
-    if not ideas:
-        st.error("アイデア生成に失敗しました。戻って再試行してください。")
-    else:
-        selected_plain_i = st.session_state.sg_selected_ideas or []
-        n_sel_i = len(selected_plain_i)
-
-        # ── 選択ステータスバー ────────────────────────────────────
-        if selected_plain_i:
-            chips_html_i = "".join([
-                f'<div style="display:inline-flex;align-items:center;gap:6px;'
-                f'background:linear-gradient(135deg,#059669,#10B981);border-radius:24px;'
-                f'padding:6px 16px;margin:3px 6px 3px 0;box-shadow:0 2px 8px rgba(5,150,105,.25);">'
-                f'<span style="font-size:0.82rem;color:white;font-weight:600;">{t.split("｜")[0][:25]}</span>'
-                f'</div>'
-                for t in selected_plain_i
-            ])
-            st.markdown(
-                f'<div style="background:white;border:1px solid #E5E7EB;border-radius:14px;'
-                f'padding:12px 18px;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,.04);">'
-                f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
-                f'<span style="font-size:0.78rem;color:#6B7280;font-weight:600;text-transform:uppercase;'
-                f'letter-spacing:.06em;">選択中のアイデア</span>'
-                f'<span style="background:#ECFDF5;color:#059669;font-weight:700;font-size:0.82rem;'
-                f'padding:3px 12px;border-radius:20px;">{n_sel_i}/3</span></div>'
-                f'<div style="line-height:2.2;">{chips_html_i}</div></div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                '<div style="background:linear-gradient(135deg,#ECFDF5,#F0FDF4);border:1px solid #6EE7B7;'
-                'border-radius:14px;padding:14px 18px;margin-bottom:18px;">'
-                '<div style="font-weight:600;color:#065F46;font-size:0.88rem;">'
-                '👇 カードをタップしてアイデアを選択してください（最大3個）</div></div>',
-                unsafe_allow_html=True,
-            )
-
-        # ── アイデアカードグリッド（常に表示）────────────────────────
-        COLS_I = 2
-        for row_start_i in range(0, len(ideas), COLS_I):
-            row_ideas = ideas[row_start_i:row_start_i + COLS_I]
-            cols_gi = st.columns(COLS_I)
-            for ci_i, (col_gi, idea_raw) in enumerate(zip(cols_gi, row_ideas)):
-                idx_i = row_start_i + ci_i
-                plain_i = _strip_num(idea_raw)
-                is_sel_i = plain_i in selected_plain_i
-                num_label_i = CIRCLE_NUMS[idx_i] if idx_i < len(CIRCLE_NUMS) else str(idx_i + 1)
-
-                # タイトルと補足に分割
-                if '｜' in plain_i:
-                    title_i, sub_i = plain_i.split('｜', 1)
-                    title_i = title_i.strip(); sub_i = sub_i.strip()
-                else:
-                    title_i = plain_i; sub_i = ""
-
-                with col_gi:
-                    if is_sel_i:
-                        card_bg_i = "linear-gradient(135deg,#D1FAE5 0%,#A7F3D0 100%)"
-                        card_bdr_i = "2px solid #059669"
-                        card_shadow_i = "0 4px 16px rgba(5,150,105,.25)"
-                        num_bg_i = "#059669"; num_color_i = "white"
-                        title_color_i = "#064E3B"
-                        sub_color_i = "#065F46"
-                        bullet_bg_i = "#6EE7B7"
-                        badge_i = ('<div style="position:absolute;top:10px;right:12px;background:#059669;'
-                                   'color:white;border-radius:20px;padding:2px 10px;font-size:0.72rem;'
-                                   'font-weight:700;box-shadow:0 2px 6px rgba(5,150,105,.3);">✓ 選択中</div>')
-                    else:
-                        card_bg_i = "linear-gradient(135deg,#FAFFFE 0%,#F0FDF4 100%)"
-                        card_bdr_i = "1px solid #D1FAE5"
-                        card_shadow_i = "0 2px 8px rgba(5,150,105,.06)"
-                        num_bg_i = "#10B981"; num_color_i = "white"
-                        title_color_i = "#1A2E1E"
-                        sub_color_i = "#374151"
-                        bullet_bg_i = "#D1FAE5"
-                        badge_i = ""
-
-                    # 補足テキストを「／」で分割して箇条書き化
-                    if sub_i:
-                        points_i = [p.strip() for p in sub_i.replace('/', '／').split('／') if p.strip()]
-                        bullets_html_i = "".join(
-                            f'<div style="display:flex;align-items:flex-start;gap:6px;margin-top:5px;">'
-                            f'<span style="background:{bullet_bg_i};color:{sub_color_i};border-radius:4px;'
-                            f'padding:1px 6px;font-size:0.68rem;font-weight:600;flex-shrink:0;">▸</span>'
-                            f'<span style="font-size:0.78rem;color:{sub_color_i};line-height:1.5;">{pt_i}</span>'
-                            f'</div>'
-                            for pt_i in points_i
-                        )
-                        sub_html_i = f'<div style="margin-top:10px;">{bullets_html_i}</div>'
-                    else:
-                        sub_html_i = ""
-
-                    st.markdown(
-                        f'<div style="position:relative;background:{card_bg_i};border:{card_bdr_i};'
-                        f'border-radius:16px;padding:18px 20px;min-height:100px;margin-bottom:6px;'
-                        f'box-shadow:{card_shadow_i};transition:all .15s ease;">'
-                        f'{badge_i}'
-                        f'<div style="display:flex;align-items:flex-start;gap:10px;">'
-                        f'<div style="background:{num_bg_i};color:{num_color_i};border-radius:50%;'
-                        f'width:28px;height:28px;display:flex;align-items:center;justify-content:center;'
-                        f'font-size:0.78rem;font-weight:700;flex-shrink:0;">{num_label_i}</div>'
-                        f'<div style="flex:1;min-width:0;">'
-                        f'<div style="font-weight:700;font-size:0.88rem;color:{title_color_i};'
-                        f'line-height:1.45;">{title_i}</div>'
-                        f'{sub_html_i}'
-                        f'</div></div></div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    # ── ボタン行：選択 / NG ──
-                    is_full_i = (not is_sel_i and n_sel_i >= 3)
-                    bc1_i, bc2_i = st.columns([3, 1])
-                    with bc1_i:
-                        btn_lbl_i = "✓ 選択中（解除）" if is_sel_i else "＋ 選択する"
-                        btn_type_i = "primary" if is_sel_i else "secondary"
-                        if st.button(btn_lbl_i, key=f"sg_ic_{idx_i}",
-                                     disabled=is_full_i, use_container_width=True, type=btn_type_i):
-                            if is_sel_i:
-                                st.session_state.sg_selected_ideas = [t for t in selected_plain_i if t != plain_i]
-                            else:
-                                st.session_state.sg_selected_ideas = selected_plain_i + [plain_i]
-                            st.rerun()
-                    with bc2_i:
-                        if st.button("🚫", key=f"sg_ng_i_{idx_i}", help="このアイデアをNG登録",
-                                     use_container_width=True):
-                            try:
-                                from memory_manager import add_rejected_ideas
-                                add_rejected_ideas([plain_i], st.session_state.sg_script_type)
-                                st.session_state.sg_ideas = [t for t in st.session_state.sg_ideas
-                                                             if _strip_num(t) != plain_i]
-                                st.session_state.sg_selected_ideas = [t for t in selected_plain_i if t != plain_i]
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"NG登録エラー: {e}")
-
-        # ── カスタムアイデア追加 ──
-        st.markdown(
-            '<div style="background:white;border:1px dashed #6EE7B7;border-radius:14px;'
-            'padding:14px 18px;margin-top:10px;">'
-            '<div style="font-size:0.82rem;color:#059669;font-weight:600;margin-bottom:8px;">'
-            '✏️ リストにないアイデアを追加</div></div>',
-            unsafe_allow_html=True,
-        )
-        c1_i, c2_i = st.columns([5, 1])
-        with c1_i:
-            custom_idea = st.text_input("カスタムアイデア",
-                placeholder="例：夫に言われた一言で決意した体験談",
-                label_visibility="collapsed", key="sg_custom_idea_input")
-        with c2_i:
-            if st.button("＋追加", key="sg_add_idea",
-                         disabled=not custom_idea.strip() or n_sel_i >= 3,
-                         use_container_width=True):
-                new_idea = custom_idea.strip()
-                if new_idea not in st.session_state.sg_ideas:
-                    st.session_state.sg_ideas.append(new_idea)
-                current_sel_i = list(st.session_state.sg_selected_ideas or [])
-                if new_idea not in current_sel_i:
-                    current_sel_i.append(new_idea)
-                st.session_state.sg_selected_ideas = current_sel_i
-                st.rerun()
-        if n_sel_i >= 3:
-            st.caption("（3個選択済みのため追加できません）")
-
-        # selected_ideas / total_checked は後続コードとの互換用
-        selected_ideas = list(selected_plain_i)
-        total_checked = n_sel_i
-        new_plain = set(selected_plain_i)
-
-        # ── ナビゲーションボタン（議論より先に描画） ────────────────────
-        st.markdown("<br>", unsafe_allow_html=True)
-        col_back_i, col_regen_i, col_next_i = st.columns([1, 1, 2])
-        with col_back_i:
-            if st.button("← 戻る", key="sg_step2_back"):
-                st.session_state.sg_step = 1
-                st.rerun()
-        with col_regen_i:
-            if st.button("🔄 アイデアを再生成", key="sg_step2_regen"):
-                model_id = st.session_state.sg_current_ai[0]
-                angle_name = st.session_state.sg_current_angle[1]
-                try:
-                    from memory_manager import get_good_elements, get_rejected_ideas
-                    good_elements = get_good_elements(st.session_state.sg_script_type)
-                    rejected_ideas = get_rejected_ideas(st.session_state.sg_script_type)
-                except Exception:
-                    good_elements, rejected_ideas = [], []
-                with st.spinner("アイデアを再生成中..."):
-                    try:
-                        from script_crew import generate_ideas
-                        new_ideas = generate_ideas(
-                            script_type=st.session_state.sg_script_type,
-                            selected_themes=st.session_state.sg_selected_themes,
-                            angle_name=angle_name, good_elements=good_elements,
-                            rejected_ideas=rejected_ideas, model=model_id,
-                        )
-                        st.session_state.sg_ideas = new_ideas
-                        st.session_state.sg_selected_ideas = []
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"エラー: {e}")
-        with col_next_i:
-            if st.button("台本を生成 →", key="sg_step2_next", type="primary", disabled=total_checked == 0,
-                         use_container_width=True):
-                # 丸数字を除去して内部データとして保存
-                st.session_state.sg_selected_ideas = list(new_plain)
-                model_id = st.session_state.sg_current_ai[0]
-                angle_name = st.session_state.sg_current_angle[1]
-                script_type = st.session_state.sg_script_type
-                char_range = "4500〜5000文字" if script_type == "youtube" else "700〜800文字"
-
-                try:
-                    from memory_manager import get_good_elements, get_bad_patterns, get_reference_scripts
-                    good_elements = get_good_elements(script_type)
-                    bad_patterns = get_bad_patterns(script_type)
-                    ref_scripts = get_reference_scripts(script_type)
-                except Exception:
-                    good_elements, bad_patterns, ref_scripts = [], [], []
-
-                with st.spinner(f"台本を生成中... ({char_range})"):
-                    try:
-                        from script_crew import generate_draft
-                        draft = generate_draft(
-                            script_type=script_type,
-                            selected_themes=st.session_state.sg_selected_themes,
-                            selected_ideas=selected_ideas,
-                            good_elements=good_elements, bad_patterns=bad_patterns,
-                            ref_scripts=ref_scripts, model=model_id,
-                        )
-                        st.session_state.sg_draft = draft
-                        st.session_state.sg_edited_draft = draft
-                        st.session_state.sg_sections = []
-                        st.session_state.sg_section_mode = False
-                        st.session_state["sg_draft_variants"] = []
-                        st.session_state["sg_selected_variant_idx"] = 0
-                        st.session_state.sg_step = 3
-                        st.rerun()
-                    except Exception as e:
-                        import traceback
-                        st.error(f"エラー:\n{e}\n\n{traceback.format_exc()}")
-
+                angle_key, angle_name = "science", "科学・データ根拠型"
+                model_id, model_name = "anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"
+            st.session_state.sg_current_angle = (angle_key, angle_name)
+            st.session_state.sg_current_ai = (model_id, model_name)
+            st.session_state.sg_draft_variants = []
+            st.session_state.sg_selected_variant_idx = 0
+            st.session_state.sg_variant_error = ""
+            st.session_state.sg_step = 3
+            st.rerun()
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1395,7 +826,7 @@ elif step == 3:
     model_id = st.session_state.sg_current_ai[0]
     target_min, target_max = (4500, 5000) if script_type == "youtube" else (700, 800)
 
-    st.markdown('<div class="section-header">Step 4 ／ 台本を選んで編集</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Step 2 ／ 台本を選んで編集</div>', unsafe_allow_html=True)
     st.markdown(f'''<div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
 <div style="background:#F0FDF4;border-radius:8px;padding:5px 12px;font-size:0.81rem;color:#059669;font-weight:600;">🤖 {ai_name}</div>
 <div style="background:#EEF2FF;border-radius:8px;padding:5px 12px;font-size:0.81rem;color:#4338CA;font-weight:600;">📏 目標 {target_min}〜{target_max}文字</div>
@@ -1443,9 +874,9 @@ elif step == 3:
             st.error(f"生成エラーが発生しました：{gen_error}")
             col_bk_e, col_retry = st.columns([1, 2])
             with col_bk_e:
-                if st.button("← アイデア選択に戻る", key="s3_back_err"):
+                if st.button("← タイプ選択に戻る", key="s3_back_err"):
                     st.session_state["sg_variant_error"] = ""
-                    st.session_state.sg_step = 2
+                    st.session_state.sg_step = 1
                     st.rerun()
             with col_retry:
                 if st.button("🔄 再試行", type="primary", key="s3_retry", use_container_width=True):
@@ -1474,6 +905,7 @@ elif step == 3:
                         ref_scripts=ref_scripts,
                         model=model_id,
                         edit_improvements=edit_improvements,
+                        source_text=st.session_state.get("sg_source_text", ""),
                     )
                     st.session_state["sg_draft_variants"] = result
                     st.session_state["sg_selected_variant_idx"] = 0
@@ -1587,8 +1019,8 @@ elif step == 3:
 
         col_bk2, col_regen2, col_next2 = st.columns([1, 1, 2])
         with col_bk2:
-            if st.button("← 戻る", key="s3_back_edit"):
-                st.session_state.sg_step = 2
+            if st.button("← タイプ選択に戻る", key="s3_back_edit"):
+                st.session_state.sg_step = 1
                 st.rerun()
         with col_regen2:
             if st.button("🔄 再生成", key="s3_regen"):
@@ -1637,7 +1069,7 @@ elif step == 4:
     model_id = st.session_state.sg_current_ai[0]
     _, ai_name = st.session_state.sg_current_ai
 
-    st.markdown('<div class="section-header">Step 4 ／ 台本完成 ＆ 最終調整</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Step 3 ／ 台本完成 ＆ 最終調整</div>', unsafe_allow_html=True)
 
     # ── 直前に学習したルールがあれば表示 ──────────────────────────
     last_rules = st.session_state.get("sg_last_learned_rules", [])
