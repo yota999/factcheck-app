@@ -802,6 +802,98 @@ def generate_draft_variants(
     return results
 
 
+def generate_single_draft(
+    script_type: str,
+    source_text: str,
+    good_elements: list,
+    bad_patterns: list,
+    ref_scripts: list,
+    model: str = "anthropic/claude-sonnet-4-6",
+    edit_improvements: list = None,
+) -> str:
+    """元となる文章をもとに、学習データを反映した単一の台本を生成する（約900文字）"""
+    persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
+    structure = YOUTUBE_STRUCTURE if script_type == "youtube" else REEL_STRUCTURE
+
+    good_str = "\n".join(f"・{e}" for e in good_elements) or "（データなし）"
+    bad_str = "\n".join(f"・{p}" for p in bad_patterns) or "（データなし）"
+    improvements = edit_improvements or []
+    improve_str = "\n".join(f"・{r}" for r in improvements[-20:]) if improvements else ""
+    ref_str = ""
+    for i, ref in enumerate(ref_scripts, 1):
+        ref_str += f"\n【参考台本{i}（冒頭抜粋）】\n{ref[:600]}\n"
+
+    improve_section = f"""
+【✨ 必須遵守：ユーザー編集から学んだ改善ルール（生成前に全て確認すること）】
+{improve_str}
+
+【改善ルール 自己チェック（出力前に確認）】
+・冒頭の共感は「義務感・プレッシャー」ではなく「無力感・できない辛さ」になっているか
+・文語的詠嘆表現（〜ことか）を使っていないか
+・「〜しなければなりません」など上から目線の表現を使っていないか
+・科学的説明は正確か（「脂肪より先に筋肉が」は不正確）
+・「〜ですね」を使っていないか（断言場面は「〜です」で言い切る）
+・締めは視聴者の長期願望に接続し「〜していきましょう」で終わっているか
+""" if improve_str else ""
+
+    prompt = f"""{persona}
+
+以下の【元となる文章】をもとに、30〜50代女性向けの動画台本を作成してください。
+
+【元となる文章】
+{source_text[:3000]}
+
+{structure}
+
+【過去に好評だった要素（積極的に取り入れる）】
+{good_str}
+
+【過去に悪評だったパターン（絶対に避ける）】
+{bad_str}
+{improve_section}{ref_str}
+
+【必須ルール】
+・文字数：850〜950文字
+・台本本文のみ出力（説明・補足・タイトル等は不要）
+・改行を適切に入れて読みやすく
+・話し言葉（口語）で統一する"""
+
+    try:
+        return _call_llm(prompt, model=model, temperature=0.72, max_tokens=2000)
+    except Exception as e:
+        return f"（生成エラー: {e}）"
+
+
+def apply_partial_edit(
+    full_script: str,
+    target_text: str,
+    instruction: str,
+    model: str = "anthropic/claude-sonnet-4-6",
+) -> str:
+    """台本の指定箇所を修正指示に従って書き換える"""
+    prompt = f"""以下の台本の一部を修正してください。
+
+【台本全文】
+{full_script}
+
+【修正対象の箇所】
+{target_text}
+
+【修正の指示】
+{instruction}
+
+【ルール】
+・修正対象の箇所だけを指示に従って書き換える
+・それ以外の台本の内容は一切変更しない
+・台本全文を出力する（修正箇所が反映された完全な台本）
+・説明・コメント等は不要。台本本文のみ出力する"""
+
+    try:
+        return _call_llm(prompt, model=model, temperature=0.3, max_tokens=2000)
+    except Exception as e:
+        return full_script  # エラー時は元のテキストをそのまま返す
+
+
 def generate_titles(draft: str, script_type: str,
                     model: str = "anthropic/claude-sonnet-4-6") -> str:
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA

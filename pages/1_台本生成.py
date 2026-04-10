@@ -605,6 +605,9 @@ def _init():
         "sg_theme_picker_open": False,
         # 元となる文章（ソーステキスト）
         "sg_source_text": "",
+        # 単一台本生成・反復編集ループ
+        "sg_current_draft": "",
+        "sg_edit_count": 0,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -813,251 +816,164 @@ elif step == 1:
             st.session_state.sg_draft_variants = []
             st.session_state.sg_selected_variant_idx = 0
             st.session_state.sg_variant_error = ""
+            st.session_state.sg_current_draft = ""
+            st.session_state.sg_edit_count = 0
             st.session_state.sg_step = 3
             st.rerun()
 
 
 # ════════════════════════════════════════════════════════════════════
-# Step 3: 5種類の切り口で台本を選択・編集
+# Step 3: 単一台本生成 + 反復編集ループ
 # ════════════════════════════════════════════════════════════════════
 elif step == 3:
-    _, ai_name = st.session_state.sg_current_ai
     script_type = st.session_state.sg_script_type
     model_id = st.session_state.sg_current_ai[0]
-    target_min, target_max = (4500, 5000) if script_type == "youtube" else (700, 800)
+    _, ai_name = st.session_state.sg_current_ai
 
-    st.markdown('<div class="section-header">Step 2 ／ 台本を選んで編集</div>', unsafe_allow_html=True)
-    st.markdown(f'''<div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
-<div style="background:#F0FDF4;border-radius:8px;padding:5px 12px;font-size:0.81rem;color:#059669;font-weight:600;">🤖 {ai_name}</div>
-<div style="background:#EEF2FF;border-radius:8px;padding:5px 12px;font-size:0.81rem;color:#4338CA;font-weight:600;">📏 目標 {target_min}〜{target_max}文字</div>
-</div>''', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Step 2 ／ 台本を生成・ブラッシュアップ</div>', unsafe_allow_html=True)
 
-    variants = st.session_state.get("sg_draft_variants", [])
+    current_draft = st.session_state.get("sg_current_draft", "")
 
-    # ── アングル定義（UIとscript_crewで共通） ───────────────────────
-    ANGLE_ICONS = {
-        "science":    "🔬", "emotion":  "💗", "story":   "📖",
-        "debate":     "⚡", "action":   "🚀", "ranking": "🏆",
-        "howto":      "🛠️", "psychology":"🧠", "trend":  "📈",
-        "expert":     "👑",
-    }
-    ANGLE_COLORS = {
-        "science":    ("#1D4ED8", "#EFF6FF", "#BFDBFE"),
-        "emotion":    ("#BE185D", "#FDF2F8", "#FBCFE8"),
-        "story":      ("#065F46", "#F0FDF4", "#A7F3D0"),
-        "debate":     ("#92400E", "#FFFBEB", "#FDE68A"),
-        "action":     ("#7C3AED", "#F5F3FF", "#DDD6FE"),
-        "ranking":    ("#B45309", "#FFF7ED", "#FED7AA"),
-        "howto":      ("#0F766E", "#F0FDFA", "#99F6E4"),
-        "psychology": ("#6D28D9", "#F5F3FF", "#EDE9FE"),
-        "trend":      ("#0369A1", "#F0F9FF", "#BAE6FD"),
-        "expert":     ("#9D174D", "#FFF1F2", "#FFE4E6"),
-    }
-    # 各切り口の「主張スタンス」一言説明
-    ANGLE_STANCE = {
-        "science":    "科学論文・研究データで\n「実は〇〇だった」を証明する",
-        "emotion":    "視聴者の悩みに深く共感し\n感情から行動を引き出す",
-        "story":      "実体験・成功/失敗談で\nリアルな説得力を持たせる",
-        "debate":     "常識の逆をついて\n「実は逆効果だった」で驚かせる",
-        "action":     "今日から始める具体的な\n行動1つをシンプルに提案する",
-        "ranking":    "TOP3・ワーストなど\nランキング形式で比較して見せる",
-        "howto":      "正しい手順・NGな手順を\n段階的にわかりやすく解説する",
-        "psychology": "脳・心理の仕組みから\n「続かない理由」を解き明かす",
-        "trend":      "SNS・最新研究トレンドを切り口に\n旬の情報として届ける",
-        "expert":     "医師・専門家の言葉を借りて\n権威と信頼性で説得する",
-    }
-
-    # ── A) 自動生成（未生成の場合はボタンなしで自動スタート） ───────
-    if not variants:
-        gen_error = st.session_state.get("sg_variant_error", "")
-        if gen_error:
-            st.error(f"生成エラーが発生しました：{gen_error}")
-            col_bk_e, col_retry = st.columns([1, 2])
-            with col_bk_e:
-                if st.button("← タイプ選択に戻る", key="s3_back_err"):
-                    st.session_state["sg_variant_error"] = ""
-                    st.session_state.sg_step = 1
-                    st.rerun()
-            with col_retry:
-                if st.button("🔄 再試行", type="primary", key="s3_retry", use_container_width=True):
-                    st.session_state["sg_variant_error"] = ""
-                    st.rerun()
-        else:
-            # 自動生成を実行
-            with st.spinner("10種の切り口で台本を並列生成中... しばらくお待ちください（1〜2分）"):
-                try:
-                    from memory_manager import (get_good_elements, get_bad_patterns,
-                                                get_reference_scripts, get_edit_improvements)
-                    good_elements = get_good_elements(script_type)
-                    bad_patterns = get_bad_patterns(script_type)
-                    ref_scripts = get_reference_scripts(script_type)
-                    edit_improvements = get_edit_improvements(script_type)
-                except Exception:
-                    good_elements, bad_patterns, ref_scripts, edit_improvements = [], [], [], []
-                try:
-                    from script_crew import generate_draft_variants
-                    result = generate_draft_variants(
-                        script_type=script_type,
-                        selected_themes=st.session_state.sg_selected_themes,
-                        selected_ideas=st.session_state.sg_selected_ideas,
-                        good_elements=good_elements,
-                        bad_patterns=bad_patterns,
-                        ref_scripts=ref_scripts,
-                        model=model_id,
-                        edit_improvements=edit_improvements,
-                        source_text=st.session_state.get("sg_source_text", ""),
-                    )
-                    st.session_state["sg_draft_variants"] = result
-                    st.session_state["sg_selected_variant_idx"] = 0
-                    st.session_state["sg_variant_error"] = ""
-                    st.session_state.sg_draft = result[0]["draft"]
-                    st.session_state.sg_edited_draft = result[0]["draft"]
-                    # テキストエリアのキャッシュをクリア
-                    st.session_state.pop("sg_direct_edit_v2", None)
-                    st.rerun()
-                except Exception as e:
-                    import traceback
-                    st.session_state["sg_variant_error"] = f"{e}\n{traceback.format_exc()}"
-                    st.rerun()
-
-    # ── B) バリアント生成済み → 選択＋編集 ────────────────────────
-    else:
-        sel_idx = st.session_state.get("sg_selected_variant_idx", 0)
-        # 範囲外チェック
-        if sel_idx >= len(variants):
-            sel_idx = 0
-            st.session_state["sg_selected_variant_idx"] = 0
-
-        # ── 選択カード（5枚 × 2行） ──────────────────────────────
-        st.markdown("**① 切り口を選んでください**")
-        row1_variants = variants[:5]
-        row2_variants = variants[5:] if len(variants) > 5 else []
-
-        def _get_summary(v: dict) -> list[str]:
-            """バリアントのsummaryフィールドを返す（旧形式への後方互換あり）"""
-            return v.get("summary") or []
-
-        # ── 縦1列レイアウトで10パターンを全て表示 ────────────────────
-        for ci, v in enumerate(variants):
-            ak = v["angle_key"]
-            icon = ANGLE_ICONS.get(ak, "✍️")
-            txt_color, bg, border = ANGLE_COLORS.get(ak, ("#4F46E5", "#EEF2FF", "#C7D2FE"))
-            is_sel = (ci == sel_idx)
-            card_bg = bg if is_sel else "white"
-            card_border_style = f"2px solid {txt_color}" if is_sel else f"1px solid {border}"
-            shadow = f"0 4px 12px {border}88" if is_sel else "0 1px 4px rgba(0,0,0,0.06)"
-
-            bullets = _get_summary(v)
-            bullets_html = "".join(
-                f'<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:4px;">'
-                f'<span style="color:{txt_color};font-size:0.7rem;margin-top:1px;flex-shrink:0;">▶</span>'
-                f'<span style="font-size:0.78rem;color:#374151;line-height:1.55;">{b}</span>'
-                f'</div>'
-                for b in bullets
-            ) if bullets else f'<span style="font-size:0.75rem;color:#9CA3AF;">（台本を選択して内容を確認してください）</span>'
-
-            col_card, col_btn = st.columns([10, 2])
-            with col_card:
-                st.markdown(
-                    f'<div style="background:{card_bg};border:{card_border_style};'
-                    f'border-radius:12px;padding:12px 16px;box-shadow:{shadow};'
-                    f'margin-bottom:2px;">'
-                    # ヘッダー行：アイコン＋切り口名
-                    f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
-                    f'<span style="font-size:1.2rem;">{icon}</span>'
-                    f'<span style="font-size:0.85rem;font-weight:700;color:{txt_color};">'
-                    f'{v["angle_name"]}</span>'
-                    f'{"<span style=\'background:" + txt_color + ";color:white;font-size:0.65rem;padding:2px 8px;border-radius:10px;margin-left:6px;\'>選択中</span>" if is_sel else ""}'
-                    f'</div>'
-                    # 台本内容の箇条書き
-                    f'<div style="padding-left:4px;">{bullets_html}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
+    # ── A) 未生成 → 自動生成 ──
+    if not current_draft:
+        with st.spinner("台本を生成中...（30〜60秒）"):
+            try:
+                from memory_manager import get_good_elements, get_bad_patterns, get_reference_scripts, get_edit_improvements
+                good_elements = get_good_elements(script_type)
+                bad_patterns = get_bad_patterns(script_type)
+                ref_scripts = get_reference_scripts(script_type)
+                edit_improvements = get_edit_improvements(script_type)
+            except Exception:
+                good_elements, bad_patterns, ref_scripts, edit_improvements = [], [], [], []
+            try:
+                from script_crew import generate_single_draft
+                draft = generate_single_draft(
+                    script_type=script_type,
+                    source_text=st.session_state.get("sg_source_text", ""),
+                    good_elements=good_elements,
+                    bad_patterns=bad_patterns,
+                    ref_scripts=ref_scripts,
+                    model=model_id,
+                    edit_improvements=edit_improvements,
                 )
-            with col_btn:
-                st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
-                if st.button("✓ 選択中" if is_sel else "選択",
-                             key=f"sel_variant_{ci}",
-                             type="primary" if is_sel else "secondary",
-                             use_container_width=True):
-                    st.session_state.pop("sg_direct_edit_v2", None)
-                    st.session_state["sg_selected_variant_idx"] = ci
-                    st.session_state.sg_draft = variants[ci]["draft"]
-                    st.session_state.sg_edited_draft = variants[ci]["draft"]
-                    st.rerun()
-            st.markdown('<div style="margin-bottom:6px;"></div>', unsafe_allow_html=True)
+                st.session_state.sg_current_draft = draft
+                st.session_state.sg_edit_count = 0
+                st.rerun()
+            except Exception as e:
+                st.error(f"生成エラー: {e}")
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("**② 台本を確認・編集してください**")
+    # ── B) 生成済み → 表示 + 編集ループ ──
+    else:
+        edit_count = st.session_state.get("sg_edit_count", 0)
 
-        ak_sel = variants[sel_idx]["angle_key"]
-        txt_c, bg_c, border_c = ANGLE_COLORS.get(ak_sel, ("#4F46E5", "#EEF2FF", "#C7D2FE"))
-        icon_sel = ANGLE_ICONS.get(ak_sel, "✍️")
-        st.markdown(
-            f'<div style="background:{bg_c};border-left:4px solid {txt_c};border-radius:0 10px 10px 0;'
-            f'padding:10px 16px;margin-bottom:12px;font-size:0.88rem;color:{txt_c};font-weight:600;">'
-            f'{icon_sel} 現在選択中：{variants[sel_idx]["angle_name"]}</div>',
-            unsafe_allow_html=True,
-        )
+        # 編集回数バッジ
+        if edit_count > 0:
+            st.markdown(
+                f'<div style="display:inline-block;background:#EEF2FF;border-radius:8px;'
+                f'padding:4px 12px;font-size:0.82rem;color:#4338CA;font-weight:600;margin-bottom:12px;">'
+                f'✏️ {edit_count}回修正済み</div>',
+                unsafe_allow_html=True,
+            )
 
-        # テキストエリア：session_state に値がある場合はそれを、なければ sg_edited_draft を使う
-        _ta_key = "sg_direct_edit_v2"
-        if _ta_key not in st.session_state:
-            st.session_state[_ta_key] = st.session_state.sg_edited_draft
+        # 台本表示（編集可能なテキストエリア）
         edited = st.text_area(
-            "台本（直接編集できます）",
-            height=1000,
-            key=_ta_key,
+            "生成された台本（直接編集もできます）",
+            value=current_draft,
+            height=500,
+            key="sg_draft_display",
         )
         char_count = len(edited)
-        if char_count < target_min:
-            st.warning(f"**{char_count}文字** ／ 目標 {target_min}〜{target_max}文字（あと {target_min - char_count}文字）")
-        elif char_count > target_max:
-            st.warning(f"**{char_count}文字** ／ {char_count - target_max}文字オーバー")
+        # 文字数表示（目標900文字）
+        target = 900
+        if char_count < target - 50:
+            st.caption(f"📝 {char_count}文字（目標 {target}文字前後）")
+        elif char_count > target + 100:
+            st.caption(f"📝 {char_count}文字（目標 {target}文字前後）")
         else:
-            st.success(f"**{char_count}文字** ／ 目標範囲内 ✓")
+            st.success(f"✓ {char_count}文字")
 
-        col_bk2, col_regen2, col_next2 = st.columns([1, 1, 2])
-        with col_bk2:
-            if st.button("← タイプ選択に戻る", key="s3_back_edit"):
-                st.session_state.sg_step = 1
-                st.rerun()
-        with col_regen2:
-            if st.button("🔄 再生成", key="s3_regen"):
-                st.session_state["sg_draft_variants"] = []
-                st.session_state["sg_selected_variant_idx"] = 0
-                st.session_state["sg_variant_error"] = ""
-                st.session_state.sg_draft = ""
-                st.session_state.sg_edited_draft = ""
-                st.session_state.pop("sg_direct_edit_v2", None)
-                st.rerun()
-        with col_next2:
-            if st.button("✅ 完成へ進む", type="primary",
-                         key="s3_next", use_container_width=True):
-                st.session_state.sg_edited_draft = edited
-                # ── 編集差分が大きい場合は改善ルールを自動学習 ──
-                original_draft = variants[sel_idx]["draft"]
-                edit_diff = abs(len(edited) - len(original_draft))
-                content_changed = edited.strip() != original_draft.strip()
-                if content_changed and edit_diff > 50:
+        # テキストエリアの手動編集を即時反映
+        if edited != current_draft:
+            st.session_state.sg_current_draft = edited
+
+        st.markdown("---")
+        st.markdown("### ✏️ 修正したい箇所を指定する")
+        st.markdown('<div style="font-size:0.85rem;color:#6B7280;margin-bottom:8px;">修正したい文章を下にそのまま貼り付けて、どう直したいかを書いてください。</div>', unsafe_allow_html=True)
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            target_text = st.text_area(
+                "① 修正したい箇所（原文をそのままコピー）",
+                height=150,
+                key="sg_edit_target",
+                placeholder="ここに修正したい文章をそのままコピーして貼り付けてください",
+            )
+        with col_b:
+            edit_instruction = st.text_area(
+                "② 修正の指示（どう変えたいか）",
+                height=150,
+                key="sg_edit_instruction",
+                placeholder="例：「プレッシャー」という表現を「無力感」のニュアンスに変えてほしい",
+            )
+
+        col_apply, col_regen, col_next = st.columns([2, 1, 1])
+        with col_apply:
+            apply_disabled = not (target_text.strip() and edit_instruction.strip())
+            if st.button("🔧 修正を適用する", type="primary", use_container_width=True,
+                         disabled=apply_disabled, key="apply_edit"):
+                with st.spinner("修正を適用・学習中..."):
                     try:
-                        from script_crew import analyze_edit_improvements, consolidate_improvement_rules
+                        from script_crew import apply_partial_edit, analyze_edit_improvements, consolidate_improvement_rules
                         from memory_manager import get_edit_improvements, save_edit_improvements
-                        new_rules = analyze_edit_improvements(
-                            original_draft, edited, script_type, model_id
+                        # 修正を適用
+                        new_draft = apply_partial_edit(
+                            full_script=st.session_state.sg_current_draft,
+                            target_text=target_text.strip(),
+                            instruction=edit_instruction.strip(),
+                            model=model_id,
                         )
+                        original = st.session_state.sg_current_draft
+                        st.session_state.sg_current_draft = new_draft
+                        st.session_state.sg_edit_count = st.session_state.get("sg_edit_count", 0) + 1
+                        # 修正差分を汎用ルールとして学習
+                        new_rules = analyze_edit_improvements(original, new_draft, script_type, model_id)
                         if new_rules:
                             current_rules = get_edit_improvements(script_type)
-                            consolidated = consolidate_improvement_rules(
-                                current_rules, new_rules, script_type, model_id
-                            )
+                            consolidated = consolidate_improvement_rules(current_rules, new_rules, script_type, model_id)
                             save_edit_improvements(consolidated, script_type)
                             st.session_state["sg_last_learned_rules"] = consolidated
-                    except Exception:
-                        pass
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"修正エラー: {e}")
+
+        with col_regen:
+            if st.button("🔄 再生成", key="s3_regen", use_container_width=True):
+                st.session_state.sg_current_draft = ""
+                st.session_state.sg_edit_count = 0
+                st.rerun()
+
+        with col_next:
+            if st.button("✅ 完成へ進む", key="s3_next", use_container_width=True):
+                st.session_state.sg_edited_draft = st.session_state.sg_current_draft
                 st.session_state.sg_titles = ""
                 st.session_state.sg_step = 4
                 st.rerun()
+
+        # 学習済みルール表示
+        last_rules = st.session_state.get("sg_last_learned_rules", [])
+        if last_rules:
+            st.markdown("---")
+            st.markdown("**✨ 今回の修正から学習したルール**")
+            for r in last_rules[-3:]:
+                st.markdown(f'<div style="background:#ECFDF5;border-left:3px solid #10B981;padding:8px 12px;border-radius:4px;font-size:0.82rem;margin-bottom:4px;">{r}</div>', unsafe_allow_html=True)
+            st.session_state["sg_last_learned_rules"] = []
+
+        # 戻るボタン
+        if st.button("← 文章入力に戻る", key="s3_back"):
+            st.session_state.sg_current_draft = ""
+            st.session_state.sg_edit_count = 0
+            st.session_state.sg_step = 1
+            st.rerun()
 
 
 # ════════════════════════════════════════════════════════════════════
