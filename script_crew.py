@@ -1145,15 +1145,47 @@ def generate_single_draft(
 {improve_section}{ref_str}
 
 【必須ルール（厳守）】
-{"・文字数：必ず4500文字以上・5000文字以内で出力すること。4500文字未満で終わることは絶対に禁止。各セクションを十分に展開し、短縮しないこと。" if script_type == "youtube" else "・文字数：850〜950文字（厳守）"}
+{"・合計文字数：4500〜5000文字（台本本文のみ。不足する場合は各セクションを追加展開して補うこと）" if script_type == "youtube" else "・文字数：850〜950文字（厳守）"}
 ・台本本文のみ出力（説明・補足・タイトル等は不要）
 ・改行を適切に入れて読みやすく
 ・話し言葉（口語）で統一する
-{"・セクションを省略したり要約したりしないこと。各ブロックをプロンプト通りに全て書き切ること。" if script_type == "youtube" else ""}"""
+{"" if script_type != "youtube" else """・各セクションの最低文字数（厳守）：
+  - 【自己紹介・テーマ提示】：250文字以上
+  - 【生徒事例】：600文字以上（具体的な数字・引用・感情描写を必ず入れる）
+  - 【失敗パターンの提示】：400文字以上（視聴者が共感できる描写を丁寧に書く）
+  - 【失敗の根拠説明】：500文字以上（ホルモン・研究データ・比喩を全て使う）
+  - 【ステップ解説】：各ステップ400文字以上（3ステップで合計1200文字以上）
+  - 【まとめ】：200文字以上
+  - 【締め・CTA】：350文字以上（固定文を全文そのまま使う）
+・上記の文字数に満たないセクションは、具体例・体験談・科学的解説を追加して必ず補うこと"""}"""
 
     max_tok = 8000 if script_type == "youtube" else 2000
     try:
-        return _call_llm(prompt, model=model, temperature=0.72, max_tokens=max_tok)
+        draft = _call_llm(prompt, model=model, temperature=0.72, max_tokens=max_tok)
+        # YouTube台本が4000文字未満なら自動で展開（1回のみ）
+        if script_type == "youtube" and draft and len(draft) < 4000:
+            expand_prompt = f"""以下のYouTube台本は{len(draft)}文字しかありません。
+4500〜5000文字になるまで、各セクションの内容を以下の方針で拡張してください。
+
+【拡張方針】
+・【生徒事例】：生徒の心理描写・日常の様子・変化の過程をさらに具体的に書き足す
+・【失敗の根拠説明】：ホルモンの仕組みや研究データの説明をより詳しく展開する
+・【ステップ解説】：各ステップに「なぜそうなのか」の説明と具体的なやり方をさらに追加する
+・【失敗パターンの提示】：視聴者が共感できる場面描写をより細かく書く
+・文体・構成・セクション構造はそのまま維持すること
+・追記した内容が自然につながるように書くこと
+
+【現在の台本】
+{draft}
+
+【出力】台本本文のみ出力すること（説明・コメント不要）"""
+            try:
+                expanded = _call_llm(expand_prompt, model=model, temperature=0.65, max_tokens=8000)
+                if expanded and len(expanded) > len(draft):
+                    draft = expanded
+            except Exception:
+                pass  # 展開失敗しても元のdraftを返す
+        return draft
     except Exception as e:
         return f"（生成エラー: {e}）"
 
@@ -1171,7 +1203,7 @@ def generate_four_drafts(
 
     FOUR_AIS = [
         ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"),
-        ("openai/gpt-4o",               "GPT-4o"),
+        ("openai/gpt-4o-2024-11-20",    "GPT-4o"),
         ("gemini/gemini-2.5-flash",     "Gemini 2.5 Flash"),
         ("xai/grok-3",                  "Grok 3"),
     ]
