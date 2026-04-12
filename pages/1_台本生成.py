@@ -628,27 +628,27 @@ def reset_all():
 st.markdown("""
 <div class="page-header animate-in">
   <h1>📝 台本生成システム</h1>
-  <p>AI マルチエージェントが トレンド収集 → テーマ提案 → アイデア → 台本生成 → ファクトチェック まで一気通貫で実行</p>
+  <p>素材テキストを入力するだけで、4つのAIが並列で台本を生成します</p>
 </div>
 """, unsafe_allow_html=True)
 
 
 # ─── ステッププログレス ───────────────────────────────────────────────
-STEP_LABELS = ["タイプ選択", "テーマ選択", "アイデア選択", "台本作成", "FC・完成"]
+# sg_step: 1=素材入力, 3=生成・編集, 4=完成
+STEP_MAP = {1: 0, 3: 1, 4: 2}
+STEP_LABELS = ["素材入力", "生成・編集", "完成"]
 
 def render_steps():
-    cur = st.session_state.sg_step
+    cur_step = st.session_state.sg_step
+    cur = STEP_MAP.get(cur_step, 0)
     parts = []
     for i, label in enumerate(STEP_LABELS):
         if i < cur:
-            cls = "step-done"
-            num_html = "✓"
+            cls = "step-done"; num_html = "✓"
         elif i == cur:
-            cls = "step-active"
-            num_html = str(i + 1)
+            cls = "step-active"; num_html = str(i + 1)
         else:
-            cls = "step-pending"
-            num_html = str(i + 1)
+            cls = "step-pending"; num_html = str(i + 1)
         parts.append(
             f'<div class="step-item {cls}">'
             f'<div class="step-num">{num_html}</div>'
@@ -663,108 +663,62 @@ def render_steps():
         unsafe_allow_html=True,
     )
 
-render_steps()
-
 step = st.session_state.sg_step
+
+# ステッププログレスはStep 0（タイプ選択）以外で表示
+if step != 0:
+    render_steps()
 
 
 # ════════════════════════════════════════════════════════════════════
 # Step 0: タイプ選択
 # ════════════════════════════════════════════════════════════════════
 if step == 0:
-    st.markdown('<div class="section-header">Step 1 ／ 台本のタイプを選択</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">台本のタイプを選択してください</div>', unsafe_allow_html=True)
 
     col_yt, col_rl = st.columns(2)
-    current_type = st.session_state.sg_script_type
 
     with col_yt:
-        yt_cls = "selected" if current_type == "youtube" else ""
-        st.markdown(f'''<div class="type-card {yt_cls}">
+        st.markdown('''<div class="type-card">
 <div class="type-card-icon">📺</div>
 <div class="type-card-title">YouTube 台本</div>
 <div class="type-card-desc">長尺動画向けのしっかりした構成<br>解説・教育系コンテンツに最適</div>
 <div class="type-card-badge">4,500〜5,000 文字</div>
 </div>''', unsafe_allow_html=True)
-        if st.button("📺 YouTube を選択", use_container_width=True,
-                     type="primary" if current_type == "youtube" else "secondary",
-                     key="sel_yt"):
+        if st.button("📺 YouTube を選択", use_container_width=True, type="primary", key="sel_yt"):
             st.session_state.sg_script_type = "youtube"
-            st.session_state["sg_auto_gen_themes"] = True
+            try:
+                from memory_manager import get_next_angle, get_next_ai
+                angle_key, angle_name = get_next_angle("youtube")
+                model_id, model_name = get_next_ai("youtube")
+            except Exception:
+                angle_key, angle_name = "science", "科学・データ根拠型"
+                model_id, model_name = "anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"
+            st.session_state.sg_current_angle = (angle_key, angle_name)
+            st.session_state.sg_current_ai = (model_id, model_name)
+            st.session_state.sg_step = 1
             st.rerun()
 
     with col_rl:
-        rl_cls = "selected" if current_type == "reel" else ""
-        st.markdown(f'''<div class="type-card {rl_cls}">
+        st.markdown('''<div class="type-card">
 <div class="type-card-icon">📱</div>
 <div class="type-card-title">リール台本</div>
 <div class="type-card-desc">ショート動画向けのコンパクトな構成<br>インパクト重視・拡散向け</div>
 <div class="type-card-badge">700〜800 文字</div>
 </div>''', unsafe_allow_html=True)
-        if st.button("📱 リール を選択", use_container_width=True,
-                     type="primary" if current_type == "reel" else "secondary",
-                     key="sel_rl"):
+        if st.button("📱 リール を選択", use_container_width=True, type="primary", key="sel_rl"):
             st.session_state.sg_script_type = "reel"
-            st.session_state["sg_auto_gen_themes"] = True
+            try:
+                from memory_manager import get_next_angle, get_next_ai
+                angle_key, angle_name = get_next_angle("reel")
+                model_id, model_name = get_next_ai("reel")
+            except Exception:
+                angle_key, angle_name = "science", "科学・データ根拠型"
+                model_id, model_name = "anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"
+            st.session_state.sg_current_angle = (angle_key, angle_name)
+            st.session_state.sg_current_ai = (model_id, model_name)
+            st.session_state.sg_step = 1
             st.rerun()
-
-    script_type = current_type
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # 統計 + AI情報
-    col_stats, col_ai = st.columns([3, 2])
-    with col_stats:
-        try:
-            from memory_manager import get_stats, get_next_angle, get_next_ai
-            stats = get_stats(script_type)
-            angle_key, angle_name = get_next_angle(script_type)
-            _, ai_name = get_next_ai(script_type)
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.markdown(f'<div class="stat-box"><div class="stat-num">{stats.get("total_generated",0)}</div><div class="stat-lbl">生成済み</div></div>', unsafe_allow_html=True)
-            with c2:
-                st.markdown(f'<div class="stat-box"><div class="stat-num" style="background:linear-gradient(135deg,#059669,#10B981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">{stats.get("good_count",0)}</div><div class="stat-lbl">👍 好評</div></div>', unsafe_allow_html=True)
-            with c3:
-                st.markdown(f'<div class="stat-box"><div class="stat-num" style="background:linear-gradient(135deg,#DC2626,#EF4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">{stats.get("bad_count",0)}</div><div class="stat-lbl">👎 要改善</div></div>', unsafe_allow_html=True)
-        except Exception:
-            st.info("まだデータがありません — 使うたびにAIが学習して精度が上がります")
-    with col_ai:
-        try:
-            st.markdown(f'''<div class="info-card">
-<div class="info-card-label">次回の生成設定</div>
-<div class="info-card-row">
-    <div class="icon" style="background:#EEF2FF;color:#4338CA;">🎯</div>
-    <div><span style="color:#9CA3AF;font-size:0.78rem;">アングル</span><br><b>{angle_name}</b></div>
-</div>
-<div class="info-card-row">
-    <div class="icon" style="background:#F0FDF4;color:#059669;">🤖</div>
-    <div><span style="color:#9CA3AF;font-size:0.78rem;">担当AI</span><br><b>{ai_name}</b></div>
-</div>
-</div>''', unsafe_allow_html=True)
-        except Exception:
-            pass
-
-    st.markdown('''<div class="hint-box">
-<div class="hint-icon">💡</div>
-<div>Serper + YouTube Data API でリアルタイムのトレンドを自動収集し、最新の話題に基づいたテーマを提案します。生成するたびにAIが学習し、あなた好みの台本に近づいていきます。</div>
-</div>''', unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── タイプ選択後、台本生成へ直接進む ──
-    if st.button("台本生成を開始する →", type="primary", use_container_width=True,
-                 disabled=(current_type == "")):
-        st.session_state.sg_script_type = script_type
-        try:
-            from memory_manager import get_next_angle, get_next_ai
-            angle_key, angle_name = get_next_angle(script_type)
-            model_id, model_name = get_next_ai(script_type)
-        except Exception:
-            angle_key, angle_name = "science", "科学・データ根拠型"
-            model_id, model_name = "anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"
-        st.session_state.sg_current_angle = (angle_key, angle_name)
-        st.session_state.sg_current_ai = (model_id, model_name)
-        st.session_state.sg_step = 1
-        st.rerun()
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -774,7 +728,7 @@ elif step == 1:
     script_type = st.session_state.sg_script_type
     type_label = "YouTube 台本" if script_type == "youtube" else "リール台本"
 
-    st.markdown('<div class="section-header">Step 2 ／ 元となる文章を入力</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Step 1 ／ 元となる文章を入力</div>', unsafe_allow_html=True)
 
     st.markdown("""
 <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:12px;padding:14px 18px;margin-bottom:16px;">
