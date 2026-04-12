@@ -836,9 +836,12 @@ elif step == 3:
 
         for i, d in enumerate(four_drafts):
             mname = d["model_name"]
+            draft_text = d.get("draft") or ""
+            if not draft_text.strip():
+                continue
             txt_c, bg_c, border_c = AI_COLORS.get(mname, ("#4F46E5", "#EEF2FF", "#C7D2FE"))
             icon = AI_ICONS.get(mname, "🤖")
-            draft_preview = d["draft"][:200].replace("\n", " ") + "..."
+            draft_preview = draft_text[:200].replace("\n", " ") + "..."
 
             col_card, col_btn = st.columns([10, 2])
             with col_card:
@@ -856,7 +859,7 @@ elif step == 3:
             with col_btn:
                 st.markdown('<div style="height:16px;"></div>', unsafe_allow_html=True)
                 if st.button("この台本を選択", key=f"sel_draft_{i}", use_container_width=True, type="primary"):
-                    st.session_state.sg_current_draft = d["draft"]
+                    st.session_state.sg_current_draft = draft_text
                     st.session_state.sg_edit_count = 0
                     st.rerun()
             st.markdown('<div style="margin-bottom:8px;"></div>', unsafe_allow_html=True)
