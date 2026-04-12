@@ -1004,6 +1004,51 @@ def generate_single_draft(
         return f"（生成エラー: {e}）"
 
 
+def generate_four_drafts(
+    script_type: str,
+    source_text: str,
+    good_elements: list,
+    bad_patterns: list,
+    ref_scripts: list,
+    edit_improvements: list = None,
+) -> list:
+    """4つのAIで台本を並列生成。[{"model_id","model_name","draft"},...] を返す"""
+    import concurrent.futures
+
+    FOUR_AIS = [
+        ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"),
+        ("openai/gpt-4o",               "GPT-4o"),
+        ("gemini/gemini-2.5-pro",       "Gemini 2.5 Pro"),
+        ("xai/grok-3",                  "Grok 3"),
+    ]
+
+    def _gen(model_id, model_name):
+        try:
+            draft = generate_single_draft(
+                script_type=script_type,
+                source_text=source_text,
+                good_elements=good_elements,
+                bad_patterns=bad_patterns,
+                ref_scripts=ref_scripts,
+                model=model_id,
+                edit_improvements=edit_improvements,
+            )
+        except Exception as e:
+            draft = f"（生成エラー: {e}）"
+        return {"model_id": model_id, "model_name": model_name, "draft": draft}
+
+    results = [None] * len(FOUR_AIS)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        future_map = {
+            ex.submit(_gen, mid, mname): i
+            for i, (mid, mname) in enumerate(FOUR_AIS)
+        }
+        for fut in concurrent.futures.as_completed(future_map):
+            idx = future_map[fut]
+            results[idx] = fut.result()
+    return results
+
+
 def apply_partial_edit(
     full_script: str,
     target_text: str,

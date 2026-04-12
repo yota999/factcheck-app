@@ -22,8 +22,8 @@ ANGLE_NAMES = {
 AI_ROTATION = [
     ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"),
     ("openai/gpt-4o", "GPT-4o"),
-    ("gemini/gemini-2.5-flash", "Gemini 2.5 Flash"),
-    ("xai/grok-3-mini", "Grok 3 Mini"),
+    ("gemini/gemini-2.5-pro", "Gemini 2.5 Pro"),
+    ("xai/grok-3", "Grok 3"),
 ]
 
 SCRIPT_TYPES = ["youtube", "reel"]

@@ -605,8 +605,9 @@ def _init():
         "sg_theme_picker_open": False,
         # 元となる文章（ソーステキスト）
         "sg_source_text": "",
-        # 単一台本生成・反復編集ループ
-        "sg_current_draft": "",
+        # 4本並列生成・選択・反復編集ループ
+        "sg_four_drafts": [],        # 4本の生成結果
+        "sg_current_draft": "",      # 選択後の作業台本
         "sg_edit_count": 0,
     }
     for k, v in defaults.items():
@@ -816,6 +817,7 @@ elif step == 1:
             st.session_state.sg_draft_variants = []
             st.session_state.sg_selected_variant_idx = 0
             st.session_state.sg_variant_error = ""
+            st.session_state.sg_four_drafts = []
             st.session_state.sg_current_draft = ""
             st.session_state.sg_edit_count = 0
             st.session_state.sg_step = 3
@@ -823,20 +825,20 @@ elif step == 1:
 
 
 # ════════════════════════════════════════════════════════════════════
-# Step 3: 単一台本生成 + 反復編集ループ
+# Step 3: 4本並列生成 → 選択 → 反復編集ループ
 # ════════════════════════════════════════════════════════════════════
 elif step == 3:
     script_type = st.session_state.sg_script_type
     model_id = st.session_state.sg_current_ai[0]
-    _, ai_name = st.session_state.sg_current_ai
 
     st.markdown('<div class="section-header">Step 2 ／ 台本を生成・ブラッシュアップ</div>', unsafe_allow_html=True)
 
+    four_drafts = st.session_state.get("sg_four_drafts", [])
     current_draft = st.session_state.get("sg_current_draft", "")
 
-    # ── A) 未生成 → 自動生成 ──
-    if not current_draft:
-        with st.spinner("台本を生成中...（30〜60秒）"):
+    # ── A) 4本未生成 → 並列生成 ──
+    if not four_drafts:
+        with st.spinner("Claude・GPT-4o・Gemini・Grokで4本を並列生成中...（1〜2分）"):
             try:
                 from memory_manager import get_good_elements, get_bad_patterns, get_reference_scripts, get_edit_improvements
                 good_elements = get_good_elements(script_type)
@@ -846,23 +848,75 @@ elif step == 3:
             except Exception:
                 good_elements, bad_patterns, ref_scripts, edit_improvements = [], [], [], []
             try:
-                from script_crew import generate_single_draft
-                draft = generate_single_draft(
+                from script_crew import generate_four_drafts
+                drafts = generate_four_drafts(
                     script_type=script_type,
                     source_text=st.session_state.get("sg_source_text", ""),
                     good_elements=good_elements,
                     bad_patterns=bad_patterns,
                     ref_scripts=ref_scripts,
-                    model=model_id,
                     edit_improvements=edit_improvements,
                 )
-                st.session_state.sg_current_draft = draft
-                st.session_state.sg_edit_count = 0
+                st.session_state.sg_four_drafts = drafts
                 st.rerun()
             except Exception as e:
                 st.error(f"生成エラー: {e}")
 
-    # ── B) 生成済み → 表示 + 編集ループ ──
+    # ── B) 4本生成済み・未選択 → 選択カード ──
+    elif not current_draft:
+        st.markdown("### 🤖 4つのAIが生成した台本から1本を選んでください")
+        st.markdown('<div style="font-size:0.85rem;color:#6B7280;margin-bottom:16px;">それぞれのAIが独自のアプローチで生成しました。気に入った台本を選んでブラッシュアップしていきます。</div>', unsafe_allow_html=True)
+
+        AI_COLORS = {
+            "Claude Sonnet 4.6": ("#7C3AED", "#F5F3FF", "#DDD6FE"),
+            "GPT-4o":            ("#059669", "#ECFDF5", "#A7F3D0"),
+            "Gemini 2.5 Pro":    ("#1D4ED8", "#EFF6FF", "#BFDBFE"),
+            "Grok 3":            ("#374151", "#F3F4F6", "#D1D5DB"),
+        }
+        AI_ICONS = {
+            "Claude Sonnet 4.6": "🟣",
+            "GPT-4o":            "🟢",
+            "Gemini 2.5 Pro":    "🔵",
+            "Grok 3":            "⚫",
+        }
+
+        for i, d in enumerate(four_drafts):
+            mname = d["model_name"]
+            txt_c, bg_c, border_c = AI_COLORS.get(mname, ("#4F46E5", "#EEF2FF", "#C7D2FE"))
+            icon = AI_ICONS.get(mname, "🤖")
+            draft_preview = d["draft"][:200].replace("\n", " ") + "..."
+
+            col_card, col_btn = st.columns([10, 2])
+            with col_card:
+                st.markdown(
+                    f'<div style="background:{bg_c};border:1px solid {border_c};border-radius:12px;'
+                    f'padding:14px 18px;margin-bottom:4px;">'
+                    f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+                    f'<span style="font-size:1.2rem;">{icon}</span>'
+                    f'<span style="font-weight:700;color:{txt_c};font-size:0.95rem;">{mname}</span>'
+                    f'</div>'
+                    f'<div style="font-size:0.82rem;color:#374151;line-height:1.65;">{draft_preview}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with col_btn:
+                st.markdown('<div style="height:16px;"></div>', unsafe_allow_html=True)
+                if st.button("この台本を選択", key=f"sel_draft_{i}", use_container_width=True, type="primary"):
+                    st.session_state.sg_current_draft = d["draft"]
+                    st.session_state.sg_edit_count = 0
+                    st.rerun()
+            st.markdown('<div style="margin-bottom:8px;"></div>', unsafe_allow_html=True)
+
+        st.markdown("<br>")
+        if st.button("🔄 4本を再生成する", key="regen_four"):
+            st.session_state.sg_four_drafts = []
+            st.rerun()
+        if st.button("← 文章入力に戻る", key="s3_back_select"):
+            st.session_state.sg_four_drafts = []
+            st.session_state.sg_step = 1
+            st.rerun()
+
+    # ── C) 台本選択済み → 編集ループ ──
     else:
         edit_count = st.session_state.get("sg_edit_count", 0)
 
@@ -948,6 +1002,7 @@ elif step == 3:
 
         with col_regen:
             if st.button("🔄 再生成", key="s3_regen", use_container_width=True):
+                st.session_state.sg_four_drafts = []
                 st.session_state.sg_current_draft = ""
                 st.session_state.sg_edit_count = 0
                 st.rerun()
@@ -969,10 +1024,9 @@ elif step == 3:
             st.session_state["sg_last_learned_rules"] = []
 
         # 戻るボタン
-        if st.button("← 文章入力に戻る", key="s3_back"):
+        if st.button("← 台本選択に戻る", key="s3_back"):
             st.session_state.sg_current_draft = ""
             st.session_state.sg_edit_count = 0
-            st.session_state.sg_step = 1
             st.rerun()
 
 
