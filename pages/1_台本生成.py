@@ -816,65 +816,56 @@ elif step == 3:
             except Exception as e:
                 st.error(f"生成エラー: {e}")
 
-    # ── B) 4本生成済み・未選択 → 選択カード ──
+    # ── B) 4本生成済み・未選択 → タブで選択 ──
     elif not current_draft:
         st.markdown("### 🤖 4つのAIが生成した台本から1本を選んでください")
-        st.markdown('<div style="font-size:0.85rem;color:#6B7280;margin-bottom:16px;">それぞれのAIが独自のアプローチで生成しました。気に入った台本を選んでブラッシュアップしていきます。</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.85rem;color:#6B7280;margin-bottom:16px;">タブを切り替えて読み比べ、気に入った台本を選択してください。</div>', unsafe_allow_html=True)
 
-        AI_COLORS = {
-            "Claude Sonnet 4.6":  ("#7C3AED", "#F5F3FF", "#DDD6FE"),
-            "GPT-4o":             ("#059669", "#ECFDF5", "#A7F3D0"),
-            "Gemini 2.5 Flash":   ("#1D4ED8", "#EFF6FF", "#BFDBFE"),
-            "Gemini 2.5 Pro":     ("#1D4ED8", "#EFF6FF", "#BFDBFE"),
-            "Grok 3":             ("#374151", "#F3F4F6", "#D1D5DB"),
-        }
         AI_ICONS = {
-            "Claude Sonnet 4.6":  "🟣",
-            "GPT-4o":             "🟢",
-            "Gemini 2.5 Flash":   "🔵",
-            "Gemini 2.5 Pro":     "🔵",
-            "Grok 3":             "⚫",
+            "Claude Sonnet 4.6": "🟣",
+            "GPT-4o":            "🟢",
+            "Gemini 1.5 Pro":    "🔵",
+            "Gemini 2.5 Flash":  "🔵",
+            "Gemini 2.5 Pro":    "🔵",
+            "Grok 3":            "⚫",
         }
 
-        for i, d in enumerate(four_drafts):
-            mname = d["model_name"]
-            draft_text = d.get("draft") or ""
-            if not draft_text.strip() or draft_text.startswith("（生成エラー"):
-                continue
-            txt_c, bg_c, border_c = AI_COLORS.get(mname, ("#4F46E5", "#EEF2FF", "#C7D2FE"))
-            icon = AI_ICONS.get(mname, "🤖")
-            # 全文表示（改行を<br>に変換してHTMLで表示）
-            draft_html = draft_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
+        # 有効な台本だけ抽出
+        valid_drafts = [
+            d for d in four_drafts
+            if (d.get("draft") or "").strip() and not (d.get("draft") or "").startswith("（生成エラー")
+        ]
 
-            col_card, col_btn = st.columns([10, 2])
-            with col_card:
-                st.markdown(
-                    f'<div style="background:{bg_c};border:1px solid {border_c};border-radius:12px;'
-                    f'padding:14px 18px;margin-bottom:4px;">'
-                    f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
-                    f'<span style="font-size:1.2rem;">{icon}</span>'
-                    f'<span style="font-weight:700;color:{txt_c};font-size:0.95rem;">{mname}</span>'
-                    f'</div>'
-                    f'<div style="font-size:0.82rem;color:#374151;line-height:1.75;max-height:300px;overflow-y:auto;">{draft_html}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-            with col_btn:
-                st.markdown('<div style="height:16px;"></div>', unsafe_allow_html=True)
-                if st.button("この台本を選択", key=f"sel_draft_{i}", use_container_width=True, type="primary"):
-                    st.session_state.sg_current_draft = draft_text
-                    st.session_state.sg_edit_count = 0
-                    st.rerun()
-            st.markdown('<div style="margin-bottom:8px;"></div>', unsafe_allow_html=True)
+        if valid_drafts:
+            tab_labels = [f"{AI_ICONS.get(d['model_name'], '🤖')} {d['model_name']}" for d in valid_drafts]
+            tabs = st.tabs(tab_labels)
+            for tab, d in zip(tabs, valid_drafts):
+                with tab:
+                    st.text_area(
+                        "台本",
+                        value=d["draft"],
+                        height=600,
+                        key=f"preview_{d['model_name']}",
+                        label_visibility="collapsed",
+                    )
+                    if st.button(f"✅ この台本を選択する", key=f"sel_draft_{d['model_name']}", type="primary", use_container_width=True):
+                        st.session_state.sg_current_draft = d["draft"]
+                        st.session_state.sg_edit_count = 0
+                        st.rerun()
+        else:
+            st.warning("全モデルの生成に失敗しました。再生成してください。")
 
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔄 4本を再生成する", key="regen_four"):
-            st.session_state.sg_four_drafts = []
-            st.rerun()
-        if st.button("← 文章入力に戻る", key="s3_back_select"):
-            st.session_state.sg_four_drafts = []
-            st.session_state.sg_step = 1
-            st.rerun()
+        col_regen, col_back = st.columns(2)
+        with col_regen:
+            if st.button("🔄 4本を再生成する", key="regen_four", use_container_width=True):
+                st.session_state.sg_four_drafts = []
+                st.rerun()
+        with col_back:
+            if st.button("← 文章入力に戻る", key="s3_back_select", use_container_width=True):
+                st.session_state.sg_four_drafts = []
+                st.session_state.sg_step = 1
+                st.rerun()
 
     # ── C) 台本選択済み → 編集ループ ──
     else:

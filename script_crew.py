@@ -1145,13 +1145,14 @@ def generate_single_draft(
 {improve_section}{ref_str}
 
 【必須ルール】
-・文字数：850〜950文字
+・文字数：{"4500〜5000文字（セリフ＝台本本文のみで計算）" if script_type == "youtube" else "850〜950文字"}
 ・台本本文のみ出力（説明・補足・タイトル等は不要）
 ・改行を適切に入れて読みやすく
 ・話し言葉（口語）で統一する"""
 
+    max_tok = 8000 if script_type == "youtube" else 2000
     try:
-        return _call_llm(prompt, model=model, temperature=0.72, max_tokens=2000)
+        return _call_llm(prompt, model=model, temperature=0.72, max_tokens=max_tok)
     except Exception as e:
         return f"（生成エラー: {e}）"
 
@@ -1170,7 +1171,7 @@ def generate_four_drafts(
     FOUR_AIS = [
         ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"),
         ("openai/gpt-4o",               "GPT-4o"),
-        ("gemini/gemini-2.5-flash",     "Gemini 2.5 Flash"),
+        ("gemini/gemini-1.5-pro",       "Gemini 1.5 Pro"),
         ("xai/grok-3",                  "Grok 3"),
     ]
 
