@@ -1171,7 +1171,7 @@ def generate_four_drafts(
     FOUR_AIS = [
         ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"),
         ("openai/gpt-4o",               "GPT-4o"),
-        ("gemini/gemini-1.5-pro",       "Gemini 1.5 Pro"),
+        ("gemini/gemini-2.5-flash",     "Gemini 2.5 Flash"),
         ("xai/grok-3",                  "Grok 3"),
     ]
 

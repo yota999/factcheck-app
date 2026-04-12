@@ -841,6 +841,7 @@ elif step == 3:
             tabs = st.tabs(tab_labels)
             for tab, d in zip(tabs, valid_drafts):
                 with tab:
+                    draft_len = len(d["draft"])
                     st.text_area(
                         "台本",
                         value=d["draft"],
@@ -848,6 +849,7 @@ elif step == 3:
                         key=f"preview_{d['model_name']}",
                         label_visibility="collapsed",
                     )
+                    st.caption(f"📝 {draft_len}文字")
                     if st.button(f"✅ この台本を選択する", key=f"sel_draft_{d['model_name']}", type="primary", use_container_width=True):
                         st.session_state.sg_current_draft = d["draft"]
                         st.session_state.sg_edit_count = 0
