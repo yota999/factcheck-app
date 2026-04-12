@@ -822,26 +822,29 @@ elif step == 3:
         st.markdown('<div style="font-size:0.85rem;color:#6B7280;margin-bottom:16px;">それぞれのAIが独自のアプローチで生成しました。気に入った台本を選んでブラッシュアップしていきます。</div>', unsafe_allow_html=True)
 
         AI_COLORS = {
-            "Claude Sonnet 4.6": ("#7C3AED", "#F5F3FF", "#DDD6FE"),
-            "GPT-4o":            ("#059669", "#ECFDF5", "#A7F3D0"),
-            "Gemini 2.5 Pro":    ("#1D4ED8", "#EFF6FF", "#BFDBFE"),
-            "Grok 3":            ("#374151", "#F3F4F6", "#D1D5DB"),
+            "Claude Sonnet 4.6":  ("#7C3AED", "#F5F3FF", "#DDD6FE"),
+            "GPT-4o":             ("#059669", "#ECFDF5", "#A7F3D0"),
+            "Gemini 2.5 Flash":   ("#1D4ED8", "#EFF6FF", "#BFDBFE"),
+            "Gemini 2.5 Pro":     ("#1D4ED8", "#EFF6FF", "#BFDBFE"),
+            "Grok 3":             ("#374151", "#F3F4F6", "#D1D5DB"),
         }
         AI_ICONS = {
-            "Claude Sonnet 4.6": "🟣",
-            "GPT-4o":            "🟢",
-            "Gemini 2.5 Pro":    "🔵",
-            "Grok 3":            "⚫",
+            "Claude Sonnet 4.6":  "🟣",
+            "GPT-4o":             "🟢",
+            "Gemini 2.5 Flash":   "🔵",
+            "Gemini 2.5 Pro":     "🔵",
+            "Grok 3":             "⚫",
         }
 
         for i, d in enumerate(four_drafts):
             mname = d["model_name"]
             draft_text = d.get("draft") or ""
-            if not draft_text.strip():
+            if not draft_text.strip() or draft_text.startswith("（生成エラー"):
                 continue
             txt_c, bg_c, border_c = AI_COLORS.get(mname, ("#4F46E5", "#EEF2FF", "#C7D2FE"))
             icon = AI_ICONS.get(mname, "🤖")
-            draft_preview = draft_text[:200].replace("\n", " ") + "..."
+            # 全文表示（改行を<br>に変換してHTMLで表示）
+            draft_html = draft_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
 
             col_card, col_btn = st.columns([10, 2])
             with col_card:
@@ -852,7 +855,7 @@ elif step == 3:
                     f'<span style="font-size:1.2rem;">{icon}</span>'
                     f'<span style="font-weight:700;color:{txt_c};font-size:0.95rem;">{mname}</span>'
                     f'</div>'
-                    f'<div style="font-size:0.82rem;color:#374151;line-height:1.65;">{draft_preview}</div>'
+                    f'<div style="font-size:0.82rem;color:#374151;line-height:1.75;max-height:300px;overflow-y:auto;">{draft_html}</div>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
@@ -864,7 +867,7 @@ elif step == 3:
                     st.rerun()
             st.markdown('<div style="margin-bottom:8px;"></div>', unsafe_allow_html=True)
 
-        st.markdown("<br>")
+        st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 4本を再生成する", key="regen_four"):
             st.session_state.sg_four_drafts = []
             st.rerun()
