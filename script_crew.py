@@ -1184,7 +1184,11 @@ def generate_single_draft(
   - 【まとめ】：200文字以上
 ・上記の文字数に満たないセクションは、具体例・体験談・科学的解説を追加して必ず補うこと"""}"""
 
-    max_tok = 8000 if script_type == "youtube" else 2000
+    # Gemini 2.5 Flash は thinking tokens が max_tokens を消費するため多めに確保
+    if "gemini" in model:
+        max_tok = 8000
+    else:
+        max_tok = 8000 if script_type == "youtube" else 2000
     try:
         draft = _call_llm(prompt, model=model, temperature=0.72, max_tokens=max_tok)
         # YouTube台本が4700文字未満なら自動で展開（1回のみ）
