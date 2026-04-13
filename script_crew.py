@@ -331,13 +331,28 @@ LINE誘導CTA（固定）：
 
 【文字数】4500〜5000文字（セリフ＝台本本文のみで計算）"""
 
-REEL_CTA = """【CTA】
-20代までは何も考えずにダイエットしても痩せられます。
-でも35歳以上は違います。
-正しいダイエットをしないと、絶対に体は変わりません。
-
-もっと痩せたい女性のために
+REEL_CTA_FOOTER = """もっと痩せたい女性のために
 プロフィールリンクからお家で痩せる9大特典をプレゼント中です！"""
+
+
+def _generate_reel_cta_intro(draft: str, model: str) -> str:
+    """台本の内容に合わせたCTA導入文（1〜3行）を生成する"""
+    prompt = f"""以下のリール動画台本の内容・テーマに合わせた、CTAの導入文を1〜3行で生成してください。
+
+【ルール】
+- 台本のテーマ（ダイエット方法・失敗パターンなど）を踏まえた一言で締める
+- 口語・話し言葉で書く
+- 「〜しないと変わりません」「〜だけでは痩せられません」など、危機感や共感で終わる
+- 次の固定文「もっと痩せたい女性のために」へ自然につながること
+- 導入文のみを出力すること（固定文・説明・ラベル等は不要）
+
+【台本（末尾300文字）】
+{draft[-300:]}"""
+    try:
+        intro = _call_llm(prompt, model=model, temperature=0.7, max_tokens=200)
+        return intro.strip() if intro else ""
+    except Exception:
+        return ""
 
 REEL_PERSONA = """あなたはダイエットコーチ「町田耀大」の動画台本を生成する専門ライターです。
 ユーザーが入力した素材メモをもとに、以下のルールに従って台本を生成してください。
@@ -1204,10 +1219,17 @@ def generate_single_draft(
                     draft = expanded
             except Exception:
                 pass
-        # CTAを自動追記（YouTube・Reel共通）
+        # CTAを自動追記
         if draft and not draft.startswith("（生成エラー"):
-            cta = YOUTUBE_CTA if script_type == "youtube" else REEL_CTA
-            draft = draft.rstrip() + "\n\n" + cta
+            if script_type == "youtube":
+                draft = draft.rstrip() + "\n\n" + YOUTUBE_CTA
+            else:
+                cta_intro = _generate_reel_cta_intro(draft, model)
+                cta = "\n【CTA】\n"
+                if cta_intro:
+                    cta += cta_intro + "\n\n"
+                cta += REEL_CTA_FOOTER
+                draft = draft.rstrip() + "\n\n" + cta
         return draft
     except Exception as e:
         return f"（生成エラー: {e}）"
