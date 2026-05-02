@@ -1567,6 +1567,9 @@ def auto_correct_script(original: str, fc_results: list, model: str = "anthropic
         script_match = re.search(r'## 修正版台本\s*\n(.*?)(?=\n## |\Z)', text, re.DOTALL)
         changes_match = re.search(r'## 修正箇所の説明\s*\n(.*?)(?=\n## |\Z)', text, re.DOTALL)
         corrected = script_match.group(1).strip() if script_match else text
+        # AIが出力するMarkdown記号（区切り線・見出し）を除去
+        corrected = re.sub(r'\n?^---+\s*$', '', corrected, flags=re.MULTILINE).strip()
+        corrected = re.sub(r'^#{1,3}\s+', '', corrected, flags=re.MULTILINE)
         changes = changes_match.group(1).strip() if changes_match else ""
         return {"corrected": corrected, "changes": changes, "error": None}
     except Exception as e:
@@ -1613,6 +1616,8 @@ def revise_with_instruction(
         revised_match = re.search(r'## 改訂版\s*\n(.*?)(?=\n## |\Z)', text, re.DOTALL)
         changes_match = re.search(r'## 変更箇所\s*\n(.*?)(?=\n## |\Z)', text, re.DOTALL)
         revised = revised_match.group(1).strip() if revised_match else text
+        revised = re.sub(r'\n?^---+\s*$', '', revised, flags=re.MULTILINE).strip()
+        revised = re.sub(r'^#{1,3}\s+', '', revised, flags=re.MULTILINE)
         changes = changes_match.group(1).strip() if changes_match else ""
         return {"revised": revised, "changes": changes, "error": None}
     except Exception as e:
