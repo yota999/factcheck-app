@@ -80,24 +80,35 @@ mark.diff-mark {
 
 # ─── 差分ハイライトヘルパー ────────────────────────────────────────────
 def highlight_diff(original: str, corrected: str):
-    """修正前・修正後のテキストを比較して、変更箇所に黄色マーカーを付けたHTMLを返す"""
-    def char_diff(old: str, new: str):
-        matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
-        old_parts, new_parts = [], []
+    """修正前・修正後のテキストを文単位で比較し、変更箇所に黄色マーカーを付けたHTMLを返す"""
+    import re
+
+    def split_sentences(text: str) -> list[str]:
+        # 「。！？」の後ろで区切る（区切り文字は直前の文に含める）
+        parts = re.split(r'(?<=[。！？])', text)
+        return [p for p in parts if p]
+
+    def sent_diff(old_block: str, new_block: str):
+        old_sents = split_sentences(old_block)
+        new_sents = split_sentences(new_block)
+        matcher = difflib.SequenceMatcher(None, old_sents, new_sents, autojunk=False)
+        old_html, new_html = [], []
         for op, i1, i2, j1, j2 in matcher.get_opcodes():
-            o = html_module.escape(old[i1:i2])
-            n = html_module.escape(new[j1:j2])
             if op == 'equal':
-                old_parts.append(o)
-                new_parts.append(n)
+                old_html.extend(html_module.escape(s) for s in old_sents[i1:i2])
+                new_html.extend(html_module.escape(s) for s in new_sents[j1:j2])
             elif op == 'replace':
-                old_parts.append(f'<mark class="diff-mark">{o}</mark>')
-                new_parts.append(f'<mark class="diff-mark">{n}</mark>')
+                for s in old_sents[i1:i2]:
+                    old_html.append(f'<mark class="diff-mark">{html_module.escape(s)}</mark>')
+                for s in new_sents[j1:j2]:
+                    new_html.append(f'<mark class="diff-mark">{html_module.escape(s)}</mark>')
             elif op == 'delete':
-                old_parts.append(f'<mark class="diff-mark">{o}</mark>')
+                for s in old_sents[i1:i2]:
+                    old_html.append(f'<mark class="diff-mark">{html_module.escape(s)}</mark>')
             elif op == 'insert':
-                new_parts.append(f'<mark class="diff-mark">{n}</mark>')
-        return ''.join(old_parts), ''.join(new_parts)
+                for s in new_sents[j1:j2]:
+                    new_html.append(f'<mark class="diff-mark">{html_module.escape(s)}</mark>')
+        return ''.join(old_html), ''.join(new_html)
 
     orig_paras = original.split('\n')
     corr_paras = corrected.split('\n')
@@ -110,7 +121,7 @@ def highlight_diff(original: str, corrected: str):
         elif op == 'replace':
             old_block = '\n'.join(orig_paras[i1:i2])
             new_block = '\n'.join(corr_paras[j1:j2])
-            o_h, n_h = char_diff(old_block, new_block)
+            o_h, n_h = sent_diff(old_block, new_block)
             orig_parts.append(o_h)
             corr_parts.append(n_h)
         elif op == 'delete':
