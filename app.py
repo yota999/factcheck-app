@@ -3,6 +3,8 @@ import time
 import threading
 import json
 import base64
+import difflib
+import html as html_module
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -64,6 +66,10 @@ html, body, [class*="css"] { font-family: 'Noto Sans JP', sans-serif; }
     margin:6px 0; font-size:.88rem; line-height:1.7;
     white-space:pre-wrap; word-break:break-all;
 }
+mark.diff-mark {
+    background:#FEF08A; color:inherit;
+    border-radius:3px; padding:1px 2px;
+}
 .change-item {
     background:#EFF6FF; border-left:3px solid #3B82F6;
     border-radius:0 8px 8px 0; padding:8px 12px;
@@ -71,6 +77,54 @@ html, body, [class*="css"] { font-family: 'Noto Sans JP', sans-serif; }
 }
 </style>
 """, unsafe_allow_html=True)
+
+# ─── 差分ハイライトヘルパー ────────────────────────────────────────────
+def highlight_diff(original: str, corrected: str):
+    """修正前・修正後のテキストを比較して、変更箇所に黄色マーカーを付けたHTMLを返す"""
+    def char_diff(old: str, new: str):
+        matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
+        old_parts, new_parts = [], []
+        for op, i1, i2, j1, j2 in matcher.get_opcodes():
+            o = html_module.escape(old[i1:i2])
+            n = html_module.escape(new[j1:j2])
+            if op == 'equal':
+                old_parts.append(o)
+                new_parts.append(n)
+            elif op == 'replace':
+                old_parts.append(f'<mark class="diff-mark">{o}</mark>')
+                new_parts.append(f'<mark class="diff-mark">{n}</mark>')
+            elif op == 'delete':
+                old_parts.append(f'<mark class="diff-mark">{o}</mark>')
+            elif op == 'insert':
+                new_parts.append(f'<mark class="diff-mark">{n}</mark>')
+        return ''.join(old_parts), ''.join(new_parts)
+
+    orig_paras = original.split('\n')
+    corr_paras = corrected.split('\n')
+    matcher = difflib.SequenceMatcher(None, orig_paras, corr_paras, autojunk=False)
+    orig_parts, corr_parts = [], []
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        if op == 'equal':
+            orig_parts.extend(html_module.escape(p) for p in orig_paras[i1:i2])
+            corr_parts.extend(html_module.escape(p) for p in corr_paras[j1:j2])
+        elif op == 'replace':
+            old_block = '\n'.join(orig_paras[i1:i2])
+            new_block = '\n'.join(corr_paras[j1:j2])
+            o_h, n_h = char_diff(old_block, new_block)
+            orig_parts.append(o_h)
+            corr_parts.append(n_h)
+        elif op == 'delete':
+            orig_parts.extend(
+                f'<mark class="diff-mark">{html_module.escape(p)}</mark>'
+                for p in orig_paras[i1:i2]
+            )
+        elif op == 'insert':
+            corr_parts.extend(
+                f'<mark class="diff-mark">{html_module.escape(p)}</mark>'
+                for p in corr_paras[j1:j2]
+            )
+    return '\n'.join(orig_parts), '\n'.join(corr_parts)
+
 
 # ─── コピーボタン生成ヘルパー ──────────────────────────────────────────
 def copy_button(text: str, btn_id: str = "copybtn") -> None:
@@ -345,17 +399,18 @@ if st.session_state.fc_done and st.session_state.fc_results:
             else:
                 corrected_text = correction.get("corrected", "")
 
+                orig_html, corr_html = highlight_diff(st.session_state.fc_input, corrected_text)
                 col_orig, col_corr = st.columns(2)
                 with col_orig:
                     st.markdown("**修正前**")
                     st.markdown(
-                        f'<div class="diff-original">{st.session_state.fc_input}</div>',
+                        f'<div class="diff-original">{orig_html}</div>',
                         unsafe_allow_html=True,
                     )
                 with col_corr:
                     st.markdown("**修正後**")
                     st.markdown(
-                        f'<div class="diff-corrected">{corrected_text}</div>',
+                        f'<div class="diff-corrected">{corr_html}</div>',
                         unsafe_allow_html=True,
                     )
                     copy_button(corrected_text, "copybtn1")
@@ -419,8 +474,9 @@ if st.session_state.fc_done and st.session_state.fc_results:
                     else:
                         revised_text = revision.get("revised", "")
                         st.markdown("**改訂後**")
+                        _, revised_html = highlight_diff(corrected_text, revised_text)
                         st.markdown(
-                            f'<div class="diff-corrected">{revised_text}</div>',
+                            f'<div class="diff-corrected">{revised_html}</div>',
                             unsafe_allow_html=True,
                         )
                         copy_button(revised_text, "copybtn2")
