@@ -36,8 +36,11 @@ def _build_kwargs(model: str, prompt: str, temperature: float, max_tokens: int) 
 def _clean_claude_output(text: str) -> str:
     """Claude出力の余分なMarkdown記号・区切り線・過剰空行を除去する"""
     import re
-    # --- や === の区切り線を除去
-    text = re.sub(r'^\s*[-=]{3,}\s*$', '', text, flags=re.MULTILINE)
+    # --- や === や ___ の区切り線を除去（行全体が区切り文字のみの場合）
+    text = re.sub(r'^\s*[-=_]{3,}\s*$', '', text, flags=re.MULTILINE)
+    # 念のため残った --- を直接置換
+    text = text.replace('\n\n---\n\n', '\n\n')
+    text = text.replace('\n---\n', '\n')
     # **太字** の ** を除去（テキストは残す）
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
     # *斜体* の * を除去（テキストは残す）
@@ -46,6 +49,9 @@ def _clean_claude_output(text: str) -> str:
     text = re.sub(r'\n{3,}', '\n\n', text)
     # セクション見出し（【〇〇】）の直前の余分な空行を1行に統一
     text = re.sub(r'\n{2,}(【)', r'\n\n\1', text)
+    # 特定フレーズ「〜だからこそ、お伝えしたいことがあります」を含む行を除去
+    text = re.sub(r'[^\n]*15年間で6500人[^\n]*だからこそ[^\n]*\n?', '', text)
+    text = re.sub(r'[^\n]*だからこそ[^\n]*お伝えしたいことがあります[^\n]*\n?', '', text)
     return text.strip()
 
 
@@ -1164,6 +1170,9 @@ def generate_single_draft(
     """元となる文章をもとに、学習データを反映した単一の台本を生成する（約900文字）"""
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
     structure = YOUTUBE_STRUCTURE if script_type == "youtube" else REEL_STRUCTURE
+    # テンプレート内の --- 区切り線を除去（AIが出力に含めないよう）
+    structure = structure.replace('\n\n---\n\n', '\n\n')
+    structure = structure.replace('\n---\n', '\n')
 
     good_str = "\n".join(f"・{e}" for e in good_elements) or "（データなし）"
     bad_str = "\n".join(f"・{p}" for p in bad_patterns) or "（データなし）"
@@ -1271,9 +1280,13 @@ def generate_single_draft(
                     cta += cta_intro.strip() + "\n\n"
                 cta += REEL_CTA_FOOTER
                 draft = draft.rstrip() + "\n\n" + cta
-        # 最終クリーニング（全モデル共通で余分な空行を除去）
+        # 最終クリーニング（全モデル共通で余分な空行・区切り線を除去）
         if draft and not draft.startswith("（生成エラー"):
             import re
+            draft = re.sub(r'\n{3,}', '\n\n', draft)
+            # --- 区切り線を全モデル共通で除去（CTAに含まれないため安全）
+            draft = re.sub(r'^\s*[-=_]{3,}\s*$', '', draft, flags=re.MULTILINE)
+            draft = draft.replace('\n\n---\n\n', '\n\n').replace('\n---\n', '\n')
             draft = re.sub(r'\n{3,}', '\n\n', draft)
         return draft
     except Exception as e:
