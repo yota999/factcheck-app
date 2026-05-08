@@ -1178,6 +1178,7 @@ def generate_single_draft(
     ref_scripts: list,
     model: str = "anthropic/claude-sonnet-4-6",
     edit_improvements: list = None,
+    refine_instruction: str = "",
 ) -> str:
     """元となる文章をもとに、学習データを反映した単一の台本を生成する（約900文字）"""
     persona = YOUTUBE_PERSONA if script_type == "youtube" else REEL_PERSONA
@@ -1207,7 +1208,14 @@ def generate_single_draft(
 ・締めは視聴者の長期願望に接続し「〜していきましょう」で終わっているか
 """ if improve_str else ""
 
-    prompt = f"""{persona}
+    refine_section = f"""
+【🔧 追加指示（最優先・必ず全て反映すること）】
+以下の指示は他のどのルールよりも優先して反映してください。
+{refine_instruction.strip()}
+
+""" if refine_instruction.strip() else ""
+
+    prompt = f"""{persona}{refine_section}
 
 以下の【元となる文章】をもとに、30〜50代女性向けの動画台本を作成してください。
 
@@ -1312,6 +1320,7 @@ def generate_four_drafts(
     bad_patterns: list,
     ref_scripts: list,
     edit_improvements: list = None,
+    refine_instruction: str = "",
 ) -> list:
     """4つのAIで台本を並列生成。[{"model_id","model_name","draft"},...] を返す"""
     import concurrent.futures
@@ -1333,6 +1342,7 @@ def generate_four_drafts(
                 ref_scripts=ref_scripts,
                 model=model_id,
                 edit_improvements=edit_improvements,
+                refine_instruction=refine_instruction,
             )
         except Exception as e:
             draft = f"（生成エラー: {e}）"

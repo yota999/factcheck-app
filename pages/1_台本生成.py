@@ -609,6 +609,7 @@ def _init():
         "sg_four_drafts": [],        # 4本の生成結果
         "sg_current_draft": "",      # 選択後の作業台本
         "sg_edit_count": 0,
+        "sg_refine_instruction": "", # 指示付き再生成の追加指示
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -810,6 +811,7 @@ elif step == 3:
                     bad_patterns=bad_patterns,
                     ref_scripts=ref_scripts,
                     edit_improvements=edit_improvements,
+                    refine_instruction=st.session_state.get("sg_refine_instruction", ""),
                 )
                 st.session_state.sg_four_drafts = drafts
                 st.rerun()
@@ -857,17 +859,57 @@ elif step == 3:
         else:
             st.warning("全モデルの生成に失敗しました。再生成してください。")
 
+        # ── 指示付き再生成エリア ──────────────────────────────────────
         st.markdown("<br>", unsafe_allow_html=True)
-        col_regen, col_back = st.columns(2)
-        with col_regen:
-            if st.button("🔄 4本を再生成する", key="regen_four", use_container_width=True):
+        st.markdown(
+            '<div style="background:#F0F4FF;border:1.5px solid #C7D2FE;border-radius:14px;padding:18px 20px;margin-bottom:16px;">'
+            '<div style="font-weight:700;color:#3730A3;font-size:1rem;margin-bottom:6px;">🔧 追加指示で4本を再生成する</div>'
+            '<div style="font-size:0.83rem;color:#6B7280;margin-bottom:12px;">「もっとカジュアルに」「冒頭をより刺激的に」など、気になった点を指示して全AIで再生成できます。</div>',
+            unsafe_allow_html=True,
+        )
+        refine_val_b = st.session_state.get("sg_refine_instruction", "")
+        refine_input_b = st.text_area(
+            "追加指示（任意）",
+            value=refine_val_b,
+            height=90,
+            key="sg_refine_input_b",
+            placeholder="例：共感の表現をもっと強くして\n冒頭のフックをより刺激的にして\n専門用語を減らしてカジュアルに",
+            label_visibility="collapsed",
+        )
+        col_ri1, col_ri2, col_ri3 = st.columns([3, 2, 2])
+        with col_ri1:
+            regen_disabled = not refine_input_b.strip()
+            if st.button(
+                "📝 この指示で4本を再生成する",
+                key="regen_with_instruction_b",
+                type="primary",
+                use_container_width=True,
+                disabled=regen_disabled,
+            ):
+                st.session_state.sg_refine_instruction = refine_input_b.strip()
                 st.session_state.sg_four_drafts = []
                 st.rerun()
-        with col_back:
+        with col_ri2:
+            if st.button("🔄 指示なしで再生成", key="regen_four", use_container_width=True):
+                st.session_state.sg_refine_instruction = ""
+                st.session_state.sg_four_drafts = []
+                st.rerun()
+        with col_ri3:
             if st.button("← 文章入力に戻る", key="s3_back_select", use_container_width=True):
+                st.session_state.sg_refine_instruction = ""
                 st.session_state.sg_four_drafts = []
                 st.session_state.sg_step = 1
                 st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # 現在の追加指示が設定されている場合に表示
+        if st.session_state.get("sg_refine_instruction"):
+            st.markdown(
+                f'<div style="background:#FEF3C7;border-left:3px solid #F59E0B;border-radius:6px;'
+                f'padding:8px 12px;font-size:0.83rem;color:#92400E;margin-top:-8px;">'
+                f'🔧 現在の追加指示：{st.session_state.sg_refine_instruction}</div>',
+                unsafe_allow_html=True,
+            )
 
     # ── C) 台本選択済み → 編集ループ ──
     else:
@@ -955,6 +997,7 @@ elif step == 3:
 
         with col_regen:
             if st.button("🔄 再生成", key="s3_regen", use_container_width=True):
+                st.session_state.sg_refine_instruction = ""
                 st.session_state.sg_four_drafts = []
                 st.session_state.sg_current_draft = ""
                 st.session_state.sg_edit_count = 0
@@ -976,11 +1019,46 @@ elif step == 3:
                 st.markdown(f'<div style="background:#ECFDF5;border-left:3px solid #10B981;padding:8px 12px;border-radius:4px;font-size:0.82rem;margin-bottom:4px;">{r}</div>', unsafe_allow_html=True)
             st.session_state["sg_last_learned_rules"] = []
 
-        # 戻るボタン
-        if st.button("← 台本選択に戻る", key="s3_back"):
-            st.session_state.sg_current_draft = ""
-            st.session_state.sg_edit_count = 0
-            st.rerun()
+        # ── 指示付き4本再生成エリア ───────────────────────────────────
+        st.markdown("---")
+        st.markdown(
+            '<div style="background:#F0F4FF;border:1.5px solid #C7D2FE;border-radius:14px;padding:18px 20px;">'
+            '<div style="font-weight:700;color:#3730A3;font-size:1rem;margin-bottom:6px;">🔧 追加指示で4本すべてを再生成する</div>'
+            '<div style="font-size:0.83rem;color:#6B7280;margin-bottom:12px;">'
+            '選んだ台本をベースに「こうしたい」という指示を入力すると、4つのAIが全て再生成します。</div>',
+            unsafe_allow_html=True,
+        )
+        refine_val_c = st.session_state.get("sg_refine_instruction", "")
+        refine_input_c = st.text_area(
+            "追加指示",
+            value=refine_val_c,
+            height=90,
+            key="sg_refine_input_c",
+            placeholder="例：もっと感情的な共感表現に変えて\n科学的な根拠をもっと具体的にして\n冒頭のインパクトを強くして",
+            label_visibility="collapsed",
+        )
+        col_rc1, col_rc2 = st.columns(2)
+        with col_rc1:
+            regen_c_disabled = not refine_input_c.strip()
+            if st.button(
+                "📝 この指示で4本再生成する",
+                key="regen_with_instruction_c",
+                type="primary",
+                use_container_width=True,
+                disabled=regen_c_disabled,
+            ):
+                st.session_state.sg_refine_instruction = refine_input_c.strip()
+                st.session_state.sg_four_drafts = []
+                st.session_state.sg_current_draft = ""
+                st.session_state.sg_edit_count = 0
+                st.rerun()
+        with col_rc2:
+            if st.button("← 台本選択に戻る（指示なし）", key="s3_back", use_container_width=True):
+                st.session_state.sg_refine_instruction = ""
+                st.session_state.sg_current_draft = ""
+                st.session_state.sg_edit_count = 0
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════════
