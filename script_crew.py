@@ -33,6 +33,32 @@ def _build_kwargs(model: str, prompt: str, temperature: float, max_tokens: int) 
         kwargs["api_key"] = os.getenv("XAI_API_KEY", "")
     return kwargs
 
+def _clean_claude_output(text: str) -> str:
+    """Claude出力の余分なMarkdown記号・区切り線・過剰空行を除去する"""
+    import re
+    # --- や === の区切り線を除去
+    text = re.sub(r'^\s*[-=]{3,}\s*$', '', text, flags=re.MULTILINE)
+    # **太字** の ** を除去（テキストは残す）
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    # *斜体* の * を除去（テキストは残す）
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    # 3行以上連続する空行を1行に圧縮
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    # セクション見出し（【〇〇】）の直前の余分な空行を1行に統一
+    text = re.sub(r'\n{2,}(【)', r'\n\n\1', text)
+    return text.strip()
+
+
+def _clean_output(text: str, model: str) -> str:
+    """モデルに応じて出力を整形する"""
+    if "claude" in model:
+        text = _clean_claude_output(text)
+    # 全モデル共通：3連以上の空行を除去
+    import re
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text
+
+
 def _call_llm(prompt: str, model: str = "anthropic/claude-sonnet-4-6",
               temperature: float = 0.7, max_tokens: int = 8000) -> str:
     import litellm
@@ -43,9 +69,12 @@ def _call_llm(prompt: str, model: str = "anthropic/claude-sonnet-4-6",
             kwargs = _build_kwargs(attempt_model, prompt, temperature, max_tokens)
             response = litellm.completion(**kwargs)
             if attempt_model != model:
-                # フォールバックが発動した場合はログに残す
                 print(f"[fallback] {model} → {attempt_model}")
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            # Claudeはmarkdown記号・区切り線・過剰空行を除去
+            if "claude" in attempt_model:
+                content = _clean_claude_output(content)
+            return content
         except Exception as e:
             err_str = str(e).lower()
             # overloaded / rate_limit / server_error のときだけ次のモデルへ
@@ -1237,11 +1266,15 @@ def generate_single_draft(
                 draft = draft.rstrip() + "\n\n" + YOUTUBE_CTA
             else:
                 cta_intro = _generate_reel_cta_intro(draft, model)
-                cta = "\n【CTA】\n"
+                cta = "【CTA】\n"
                 if cta_intro:
-                    cta += cta_intro + "\n\n"
+                    cta += cta_intro.strip() + "\n\n"
                 cta += REEL_CTA_FOOTER
                 draft = draft.rstrip() + "\n\n" + cta
+        # 最終クリーニング（全モデル共通で余分な空行を除去）
+        if draft and not draft.startswith("（生成エラー"):
+            import re
+            draft = re.sub(r'\n{3,}', '\n\n', draft)
         return draft
     except Exception as e:
         return f"（生成エラー: {e}）"
