@@ -610,6 +610,7 @@ def _init():
         "sg_current_draft": "",      # 選択後の作業台本
         "sg_edit_count": 0,
         "sg_refine_instruction": "", # 指示付き再生成の追加指示
+        "sg_highlighted_cache": {},  # {key: str, data: {model_name: html}}
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -623,6 +624,65 @@ def reset_all():
         if k.startswith("sg_"):
             del st.session_state[k]
     _init()
+
+
+# ─── 台本ハイライトヘルパー ─────────────────────────────────────────
+def _make_highlighted_html(draft: str, other_drafts: list) -> str:
+    """
+    draft の各行を other_drafts と比較し、
+    他のAIと異なる（ユニークな）行を黄色でハイライトした HTML を返す。
+    - 類似度0.65以上の行が過半数のdraftに存在 → 共通（白）
+    - それ以外 → この台本独自（黄色）
+    """
+    import difflib, math
+    from html import escape
+
+    lines = draft.split('\n')
+    other_line_lists = [d.split('\n') for d in other_drafts if d.strip()]
+    n_others = len(other_line_lists)
+    # 過半数以上のdraftに類似行があれば「共通」とみなす
+    threshold = math.ceil(n_others / 2) if n_others > 0 else 1
+
+    html_parts = []
+    for line in lines:
+        stripped = line.strip()
+        esc = escape(line)
+
+        # 空行・セクションヘッダー・短い行は比較対象外（そのまま出力）
+        if not stripped or stripped.startswith('【') or stripped.startswith('###') or len(stripped) < 4:
+            html_parts.append(esc)
+            continue
+
+        # 他のdraftsに類似行がいくつあるか数える
+        similar_count = 0
+        for other_lines in other_line_lists:
+            best = 0.0
+            for ol in other_lines:
+                ol_s = ol.strip()
+                if not ol_s or len(ol_s) < 4:
+                    continue
+                # 長さが極端に違う行はスキップ（高速化）
+                if min(len(stripped), len(ol_s)) / max(len(stripped), len(ol_s)) < 0.3:
+                    continue
+                r = difflib.SequenceMatcher(None, stripped, ol_s).ratio()
+                if r > best:
+                    best = r
+                if best >= 0.65:   # 閾値に達したら内側ループ終了
+                    break
+            if best >= 0.65:
+                similar_count += 1
+            if similar_count >= threshold:
+                break  # もうハイライト不要と確定（早期終了）
+
+        # ユニーク判定
+        if similar_count < threshold:
+            html_parts.append(
+                f'<span style="background:#FEF08A;border-radius:3px;padding:0 2px;">{esc}</span>'
+            )
+        else:
+            html_parts.append(esc)
+
+    return '<br>'.join(html_parts)
 
 
 # ─── ページヘッダー ───────────────────────────────────────────────────
@@ -839,20 +899,70 @@ elif step == 3:
         ]
 
         if valid_drafts:
+            # ── ハイライトHTML計算（キャッシュ済みなら再利用）──
+            import hashlib
+            cache_key = hashlib.md5(
+                "|".join(d["draft"] for d in valid_drafts).encode("utf-8")
+            ).hexdigest()
+            cached = st.session_state.get("sg_highlighted_cache", {})
+            if cached.get("key") != cache_key:
+                draft_texts = [d["draft"] for d in valid_drafts]
+                hl_data = {}
+                for i, d in enumerate(valid_drafts):
+                    others = [t for j, t in enumerate(draft_texts) if j != i]
+                    hl_data[d["model_name"]] = _make_highlighted_html(d["draft"], others)
+                st.session_state.sg_highlighted_cache = {"key": cache_key, "data": hl_data}
+            highlighted_htmls = st.session_state.sg_highlighted_cache["data"]
+
+            # ── タブ表示 ──
             tab_labels = [f"{AI_ICONS.get(d['model_name'], '🤖')} {d['model_name']}" for d in valid_drafts]
             tabs = st.tabs(tab_labels)
             for tab, d in zip(tabs, valid_drafts):
                 with tab:
                     draft_len = len(d["draft"])
-                    st.text_area(
-                        "台本",
-                        value=d["draft"],
-                        height=600,
-                        key=f"preview_{d['model_name']}",
-                        label_visibility="collapsed",
+
+                    # 凡例
+                    st.markdown(
+                        '<div style="display:flex;align-items:center;gap:12px;'
+                        'margin-bottom:8px;font-size:0.81rem;color:#6B7280;">'
+                        '<span style="background:#FEF08A;padding:2px 10px;border-radius:4px;'
+                        'color:#78350F;font-weight:600;font-size:0.8rem;">黄色</span>'
+                        'この台本だけの独自表現&nbsp;&nbsp;'
+                        '<span style="background:white;border:1px solid #D1D5DB;padding:2px 10px;'
+                        'border-radius:4px;color:#9CA3AF;font-size:0.8rem;">白</span>'
+                        '他のAIと共通の表現'
+                        '</div>',
+                        unsafe_allow_html=True,
                     )
+
+                    # ハイライト表示（スクロール可能）
+                    st.markdown(
+                        f'<div style="max-height:560px;overflow-y:auto;background:#FAFAFA;'
+                        f'border:1px solid #E5E7EB;border-radius:10px;padding:18px 22px;'
+                        f'font-size:0.86rem;line-height:2.0;color:#1F2937;">'
+                        f'{highlighted_htmls[d["model_name"]]}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
                     st.caption(f"📝 {draft_len}文字")
-                    if st.button(f"✅ この台本を選択する", key=f"sel_draft_{d['model_name']}", type="primary", use_container_width=True):
+
+                    # コピー用プレーンテキスト（折り畳み）
+                    with st.expander("📋 プレーンテキスト（コピー用）"):
+                        st.text_area(
+                            "",
+                            value=d["draft"],
+                            height=300,
+                            key=f"plain_{d['model_name']}",
+                            label_visibility="collapsed",
+                        )
+
+                    if st.button(
+                        f"✅ この台本を選択する",
+                        key=f"sel_draft_{d['model_name']}",
+                        type="primary",
+                        use_container_width=True,
+                    ):
                         st.session_state.sg_current_draft = d["draft"]
                         st.session_state.sg_edit_count = 0
                         st.rerun()
