@@ -629,71 +629,96 @@ def reset_all():
 # ─── 台本ハイライトヘルパー ─────────────────────────────────────────
 def _make_highlighted_html(draft: str, other_drafts: list) -> str:
     """
-    draft の各行を other_drafts と比較し、内容が明らかに異なる行を黄色ハイライトする。
-    【比較方法】文字バイグラムのJaccard類似度
-      - 同じテーマ・主張なら表現が違っても「共通」と判定（閾値 0.18）
-      - 過半数のdraftに類似行がある → 共通（白）
-      - 過半数に類似行がない → この台本独自（黄色）
+    draft の各行を other_drafts と比較し、内容が明らかに異なる行だけ黄色ハイライト。
+
+    【比較方法】"行 vs 同セクション全テキスト" のカバレッジ方式
+      - 各行が属する【セクション】を特定
+      - その行のバイグラム(2文字ペア)が、他AIの同セクション全体に45%以上含まれるか確認
+      - 血糖値の話なら他AIの根拠セクションにも「血糖値」が含まれている → 白
+      - そのAIだけの独自の具体例・数字・切り口 → 黄色
     """
     import math
     from html import escape
 
-    def _bigram_jaccard(a: str, b: str) -> float:
-        """文字バイグラムのJaccard類似度。内容の重なりを文字レベルで測る"""
-        bg = lambda s: set(s[i:i+2] for i in range(len(s) - 1))
-        ba, bb = bg(a), bg(b)
-        if not ba or not bb:
+    import re
+
+    def _bigrams(s: str) -> set:
+        return set(s[i:i+2] for i in range(len(s) - 1))
+
+    def _coverage(line_bg: set, text: str) -> float:
+        """
+        line の bigrams が text に何%含まれているかを返す（カバレッジ）。
+        "血糖値が上昇します" のキーワードが他AIの根拠セクション全体に含まれていれば
+        高スコアになる → 同内容とみなせる。
+        """
+        if not line_bg:
             return 0.0
-        return len(ba & bb) / len(ba | bb)
+        text_bg = _bigrams(text)
+        return len(line_bg & text_bg) / len(line_bg)
 
-    # バイグラムJaccardの閾値（0.18以上で「同テーマ・類似内容」とみなす）
-    # 例: "毎日腹筋を100回続けていませんか" と "腹筋を毎日頑張っていませんか"
-    #     → bigram重複あり → 0.18超 → 共通（白）
-    # 例: "コルチゾールが増加します" と "ミトコンドリアが低下します"
-    #     → bigram重複なし → 0.18未満 → 独自（黄色）
-    THRESHOLD = 0.18
+    # 【セクション名】でテキストを分割してセクション名→テキストの辞書を返す
+    def _section_map(text: str) -> dict:
+        smap = {}
+        current = "_top"
+        buf = []
+        for ln in text.split('\n'):
+            hm = re.match(r'^【(.+?)】\s*$', ln.strip())
+            if hm:
+                smap[current] = '\n'.join(buf)
+                current = hm.group(1)
+                buf = []
+            else:
+                buf.append(ln)
+        smap[current] = '\n'.join(buf)
+        return smap
 
-    lines = draft.split('\n')
-    other_line_lists = [d.split('\n') for d in other_drafts if d.strip()]
-    n_others = len(other_line_lists)
-    # 過半数以上のdraftに類似行があれば「共通」
-    common_need = math.ceil(n_others / 2) if n_others > 0 else 1
+    # 閾値: この行のバイグラムの45%以上が他セクションに含まれていれば「共通」とみなす
+    # 例: "血糖値が上昇します" → 他AIの根拠セクションに「血糖値」「上昇」含まれる → 白
+    # 例: "独自の比喩で全く違う説明" → 含まれない → 黄色
+    COVERAGE_THRESHOLD = 0.45
+    valid_others = [d for d in other_drafts if d.strip()]
+    n_others = len(valid_others)
+    common_need = max(1, math.ceil(n_others / 2))
+
+    other_smaps = [_section_map(d) for d in valid_others]
 
     html_parts = []
-    for line in lines:
+    current_section = "_top"
+
+    for line in draft.split('\n'):
         stripped = line.strip()
         esc = escape(line)
 
-        # 空行・セクションヘッダー（【〇〇】）・短い行は比較対象外
-        if not stripped or stripped.startswith('【') or stripped.startswith('###') or len(stripped) < 5:
+        # セクションヘッダー行でカレントセクションを更新（ハイライトしない）
+        hm = re.match(r'^【(.+?)】\s*$', stripped)
+        if hm:
+            current_section = hm.group(1)
             html_parts.append(esc)
             continue
 
-        # 他のdraftに「内容が似た行」がいくつあるか数える
-        similar_count = 0
-        for other_lines in other_line_lists:
-            best = 0.0
-            for ol in other_lines:
-                ol_s = ol.strip()
-                if not ol_s or len(ol_s) < 5:
-                    continue
-                j = _bigram_jaccard(stripped, ol_s)
-                if j > best:
-                    best = j
-                if best >= THRESHOLD:   # 閾値到達で内側ループ終了（高速化）
-                    break
-            if best >= THRESHOLD:
-                similar_count += 1
-            if similar_count >= common_need:
-                break  # 既に「共通」と確定→外側ループも終了
+        # 空行・短い行（8文字未満）はそのまま白
+        if not stripped or len(stripped) < 8:
+            html_parts.append(esc)
+            continue
 
-        # ユニーク判定：過半数のdraftに類似行がなければ黄色
-        if similar_count < common_need:
+        line_bg = _bigrams(stripped)
+
+        # 各 other draft の「同セクション全テキスト」に対してカバレッジを測る
+        covered_count = 0
+        for smap in other_smaps:
+            # 同名セクションがあればそれを使う、なければ全テキストで比較
+            compare_text = smap.get(current_section) or '\n'.join(smap.values())
+            if _coverage(line_bg, compare_text) >= COVERAGE_THRESHOLD:
+                covered_count += 1
+            if covered_count >= common_need:
+                break  # 既に「共通」と確定 → 早期終了
+
+        if covered_count >= common_need:
+            html_parts.append(esc)  # 共通 → 白
+        else:
             html_parts.append(
                 f'<span style="background:#FEF08A;border-radius:3px;padding:0 2px;">{esc}</span>'
             )
-        else:
-            html_parts.append(esc)
 
     return '<br>'.join(html_parts)
 
