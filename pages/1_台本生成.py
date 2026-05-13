@@ -725,13 +725,16 @@ def _make_highlighted_html(draft: str, other_drafts: list) -> str:
 
 # ─── セクション分割ヘルパー ──────────────────────────────────────────
 def _parse_sections(text: str) -> dict:
-    """ドラフトを【セクション名】で分割して {セクション名: テキスト} を返す"""
+    """ドラフトを【セクション名】で分割して {セクション名: テキスト} を返す。
+    セクション名に【や】が含まれる行（タイトル等）は誤認識しないよう除外する。
+    """
     import re
     smap = {}
     current = "_top"
     buf = []
     for ln in text.split('\n'):
-        m = re.match(r'^【(.+?)】\s*$', ln.strip())
+        # 【】内に【や】が含まれないこと・セクション名が30文字以内であることを条件に
+        m = re.match(r'^【([^【】]{1,30})】\s*$', ln.strip())
         if m:
             smap[current] = '\n'.join(buf).strip()
             current = m.group(1)
