@@ -962,7 +962,7 @@ elif step == 3:
                 "|".join(d["draft"] for d in valid_drafts).encode("utf-8")
             ).hexdigest()
             cached = st.session_state.get("sg_highlighted_cache", {})
-            if cached.get("key") != cache_key:
+            if cached.get("key") != cache_key or "full" not in cached:
                 draft_texts = [d["draft"] for d in valid_drafts]
 
                 # 全体ハイライト
