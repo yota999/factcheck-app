@@ -994,18 +994,25 @@ elif step == 3:
 
                         st.caption(f"📝 {draft_len}文字")
 
-                        if st.button(
-                            f"✅ この台本を選択する",
-                            key=f"sel_draft_{d['model_name']}",
-                            type="primary",
-                            use_container_width=True,
-                        ):
-                            st.session_state.sg_current_draft = d["draft"]
-                            st.session_state.sg_edit_count = 0
-                            st.rerun()
-
                 # 行の間にスペース
                 st.markdown("<br>", unsafe_allow_html=True)
+
+            # ── 台本選択（グリッド下部にまとめて1か所）──
+            st.markdown("---")
+            model_names = [d["model_name"] for d in valid_drafts]
+            icons = [AI_ICONS.get(n, "🤖") for n in model_names]
+            radio_labels = [f"{ic} {nm}" for ic, nm in zip(icons, model_names)]
+            chosen_label = st.radio(
+                "どの台本で進みますか？",
+                radio_labels,
+                horizontal=True,
+                key="sg_draft_radio",
+            )
+            chosen_idx = radio_labels.index(chosen_label)
+            if st.button("✅ この台本で進む →", type="primary", use_container_width=True, key="sel_draft_go"):
+                st.session_state.sg_current_draft = valid_drafts[chosen_idx]["draft"]
+                st.session_state.sg_edit_count = 0
+                st.rerun()
 
         else:
             st.warning("全モデルの生成に失敗しました。再生成してください。")
