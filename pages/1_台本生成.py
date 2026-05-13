@@ -629,53 +629,66 @@ def reset_all():
 # ─── 台本ハイライトヘルパー ─────────────────────────────────────────
 def _make_highlighted_html(draft: str, other_drafts: list) -> str:
     """
-    draft の各行を other_drafts と比較し、
-    他のAIと異なる（ユニークな）行を黄色でハイライトした HTML を返す。
-    - 類似度0.65以上の行が過半数のdraftに存在 → 共通（白）
-    - それ以外 → この台本独自（黄色）
+    draft の各行を other_drafts と比較し、内容が明らかに異なる行を黄色ハイライトする。
+    【比較方法】文字バイグラムのJaccard類似度
+      - 同じテーマ・主張なら表現が違っても「共通」と判定（閾値 0.18）
+      - 過半数のdraftに類似行がある → 共通（白）
+      - 過半数に類似行がない → この台本独自（黄色）
     """
-    import difflib, math
+    import math
     from html import escape
+
+    def _bigram_jaccard(a: str, b: str) -> float:
+        """文字バイグラムのJaccard類似度。内容の重なりを文字レベルで測る"""
+        bg = lambda s: set(s[i:i+2] for i in range(len(s) - 1))
+        ba, bb = bg(a), bg(b)
+        if not ba or not bb:
+            return 0.0
+        return len(ba & bb) / len(ba | bb)
+
+    # バイグラムJaccardの閾値（0.18以上で「同テーマ・類似内容」とみなす）
+    # 例: "毎日腹筋を100回続けていませんか" と "腹筋を毎日頑張っていませんか"
+    #     → bigram重複あり → 0.18超 → 共通（白）
+    # 例: "コルチゾールが増加します" と "ミトコンドリアが低下します"
+    #     → bigram重複なし → 0.18未満 → 独自（黄色）
+    THRESHOLD = 0.18
 
     lines = draft.split('\n')
     other_line_lists = [d.split('\n') for d in other_drafts if d.strip()]
     n_others = len(other_line_lists)
-    # 過半数以上のdraftに類似行があれば「共通」とみなす
-    threshold = math.ceil(n_others / 2) if n_others > 0 else 1
+    # 過半数以上のdraftに類似行があれば「共通」
+    common_need = math.ceil(n_others / 2) if n_others > 0 else 1
 
     html_parts = []
     for line in lines:
         stripped = line.strip()
         esc = escape(line)
 
-        # 空行・セクションヘッダー・短い行は比較対象外（そのまま出力）
-        if not stripped or stripped.startswith('【') or stripped.startswith('###') or len(stripped) < 4:
+        # 空行・セクションヘッダー（【〇〇】）・短い行は比較対象外
+        if not stripped or stripped.startswith('【') or stripped.startswith('###') or len(stripped) < 5:
             html_parts.append(esc)
             continue
 
-        # 他のdraftsに類似行がいくつあるか数える
+        # 他のdraftに「内容が似た行」がいくつあるか数える
         similar_count = 0
         for other_lines in other_line_lists:
             best = 0.0
             for ol in other_lines:
                 ol_s = ol.strip()
-                if not ol_s or len(ol_s) < 4:
+                if not ol_s or len(ol_s) < 5:
                     continue
-                # 長さが極端に違う行はスキップ（高速化）
-                if min(len(stripped), len(ol_s)) / max(len(stripped), len(ol_s)) < 0.3:
-                    continue
-                r = difflib.SequenceMatcher(None, stripped, ol_s).ratio()
-                if r > best:
-                    best = r
-                if best >= 0.65:   # 閾値に達したら内側ループ終了
+                j = _bigram_jaccard(stripped, ol_s)
+                if j > best:
+                    best = j
+                if best >= THRESHOLD:   # 閾値到達で内側ループ終了（高速化）
                     break
-            if best >= 0.65:
+            if best >= THRESHOLD:
                 similar_count += 1
-            if similar_count >= threshold:
-                break  # もうハイライト不要と確定（早期終了）
+            if similar_count >= common_need:
+                break  # 既に「共通」と確定→外側ループも終了
 
-        # ユニーク判定
-        if similar_count < threshold:
+        # ユニーク判定：過半数のdraftに類似行がなければ黄色
+        if similar_count < common_need:
             html_parts.append(
                 f'<span style="background:#FEF08A;border-radius:3px;padding:0 2px;">{esc}</span>'
             )
@@ -914,58 +927,61 @@ elif step == 3:
                 st.session_state.sg_highlighted_cache = {"key": cache_key, "data": hl_data}
             highlighted_htmls = st.session_state.sg_highlighted_cache["data"]
 
-            # ── タブ表示 ──
-            tab_labels = [f"{AI_ICONS.get(d['model_name'], '🤖')} {d['model_name']}" for d in valid_drafts]
-            tabs = st.tabs(tab_labels)
-            for tab, d in zip(tabs, valid_drafts):
-                with tab:
-                    draft_len = len(d["draft"])
+            # ── 凡例（グリッドの上に1回だけ表示）──
+            st.markdown(
+                '<div style="display:flex;align-items:center;gap:12px;'
+                'margin-bottom:14px;font-size:0.82rem;color:#6B7280;">'
+                '<span style="background:#FEF08A;padding:2px 12px;border-radius:4px;'
+                'color:#78350F;font-weight:700;">黄色</span>'
+                'このAIだけの独自表現・内容&nbsp;&nbsp;&nbsp;'
+                '<span style="background:white;border:1px solid #D1D5DB;padding:2px 12px;'
+                'border-radius:4px;color:#9CA3AF;">白</span>'
+                '他のAIと共通の内容'
+                '</div>',
+                unsafe_allow_html=True,
+            )
 
-                    # 凡例
-                    st.markdown(
-                        '<div style="display:flex;align-items:center;gap:12px;'
-                        'margin-bottom:8px;font-size:0.81rem;color:#6B7280;">'
-                        '<span style="background:#FEF08A;padding:2px 10px;border-radius:4px;'
-                        'color:#78350F;font-weight:600;font-size:0.8rem;">黄色</span>'
-                        'この台本だけの独自表現&nbsp;&nbsp;'
-                        '<span style="background:white;border:1px solid #D1D5DB;padding:2px 10px;'
-                        'border-radius:4px;color:#9CA3AF;font-size:0.8rem;">白</span>'
-                        '他のAIと共通の表現'
-                        '</div>',
-                        unsafe_allow_html=True,
-                    )
+            # ── 2×2グリッドで全AI同時表示 ──
+            rows = [valid_drafts[i:i+2] for i in range(0, len(valid_drafts), 2)]
+            for row in rows:
+                cols = st.columns(2)
+                for col, d in zip(cols, row):
+                    with col:
+                        icon = AI_ICONS.get(d["model_name"], "🤖")
+                        draft_len = len(d["draft"])
 
-                    # ハイライト表示（スクロール可能）
-                    st.markdown(
-                        f'<div style="max-height:560px;overflow-y:auto;background:#FAFAFA;'
-                        f'border:1px solid #E5E7EB;border-radius:10px;padding:18px 22px;'
-                        f'font-size:0.86rem;line-height:2.0;color:#1F2937;">'
-                        f'{highlighted_htmls[d["model_name"]]}'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    st.caption(f"📝 {draft_len}文字")
-
-                    # コピー用プレーンテキスト（折り畳み）
-                    with st.expander("📋 プレーンテキスト（コピー用）"):
-                        st.text_area(
-                            "",
-                            value=d["draft"],
-                            height=300,
-                            key=f"plain_{d['model_name']}",
-                            label_visibility="collapsed",
+                        # AIモデル名ヘッダー
+                        st.markdown(
+                            f'<div style="font-weight:700;font-size:0.95rem;color:#1F2937;'
+                            f'padding:6px 0 8px;">{icon} {d["model_name"]}</div>',
+                            unsafe_allow_html=True,
                         )
 
-                    if st.button(
-                        f"✅ この台本を選択する",
-                        key=f"sel_draft_{d['model_name']}",
-                        type="primary",
-                        use_container_width=True,
-                    ):
-                        st.session_state.sg_current_draft = d["draft"]
-                        st.session_state.sg_edit_count = 0
-                        st.rerun()
+                        # ハイライト表示（スクロール可能）
+                        st.markdown(
+                            f'<div style="max-height:500px;overflow-y:auto;background:#FAFAFA;'
+                            f'border:1px solid #E5E7EB;border-radius:10px;'
+                            f'padding:14px 18px;font-size:0.83rem;line-height:1.95;color:#1F2937;">'
+                            f'{highlighted_htmls[d["model_name"]]}'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        st.caption(f"📝 {draft_len}文字")
+
+                        if st.button(
+                            f"✅ この台本を選択する",
+                            key=f"sel_draft_{d['model_name']}",
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            st.session_state.sg_current_draft = d["draft"]
+                            st.session_state.sg_edit_count = 0
+                            st.rerun()
+
+                # 行の間にスペース
+                st.markdown("<br>", unsafe_allow_html=True)
+
         else:
             st.warning("全モデルの生成に失敗しました。再生成してください。")
 
