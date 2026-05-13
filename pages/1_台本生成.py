@@ -976,10 +976,20 @@ elif step == 3:
 
                 # セクション分割 + セクション別ハイライト
                 smaps = {d["model_name"]: _parse_sections(d["draft"]) for d in valid_drafts}
+
+                # 各セクション名が何件のAIに含まれるかカウント
+                sec_count: dict = {}
+                for d in valid_drafts:
+                    for k in smaps[d["model_name"]]:
+                        if k != "_top":
+                            sec_count[k] = sec_count.get(k, 0) + 1
+
+                # 2つ以上のAIが持つセクションのみタブに表示（1AIだけのサブセクション等は除外）
+                min_sec_count = max(2, len(valid_drafts) // 2)
                 all_secs = []
                 for d in valid_drafts:
                     for k in smaps[d["model_name"]]:
-                        if k != "_top" and k not in all_secs:
+                        if k != "_top" and k not in all_secs and sec_count.get(k, 0) >= min_sec_count:
                             all_secs.append(k)
 
                 sec_hl = {}
