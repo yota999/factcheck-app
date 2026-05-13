@@ -723,6 +723,25 @@ def _make_highlighted_html(draft: str, other_drafts: list) -> str:
     return '<br>'.join(html_parts)
 
 
+# ─── セクション分割ヘルパー ──────────────────────────────────────────
+def _parse_sections(text: str) -> dict:
+    """ドラフトを【セクション名】で分割して {セクション名: テキスト} を返す"""
+    import re
+    smap = {}
+    current = "_top"
+    buf = []
+    for ln in text.split('\n'):
+        m = re.match(r'^【(.+?)】\s*$', ln.strip())
+        if m:
+            smap[current] = '\n'.join(buf).strip()
+            current = m.group(1)
+            buf = []
+        else:
+            buf.append(ln)
+    smap[current] = '\n'.join(buf).strip()
+    return smap
+
+
 # ─── ページヘッダー ───────────────────────────────────────────────────
 st.markdown("""
 <div class="page-header animate-in">
@@ -937,7 +956,7 @@ elif step == 3:
         ]
 
         if valid_drafts:
-            # ── ハイライトHTML計算（キャッシュ済みなら再利用）──
+            # ── ハイライトHTML計算（全体 + セクション別、キャッシュ済みなら再利用）──
             import hashlib
             cache_key = hashlib.md5(
                 "|".join(d["draft"] for d in valid_drafts).encode("utf-8")
@@ -945,17 +964,50 @@ elif step == 3:
             cached = st.session_state.get("sg_highlighted_cache", {})
             if cached.get("key") != cache_key:
                 draft_texts = [d["draft"] for d in valid_drafts]
-                hl_data = {}
+
+                # 全体ハイライト
+                full_hl = {}
                 for i, d in enumerate(valid_drafts):
                     others = [t for j, t in enumerate(draft_texts) if j != i]
-                    hl_data[d["model_name"]] = _make_highlighted_html(d["draft"], others)
-                st.session_state.sg_highlighted_cache = {"key": cache_key, "data": hl_data}
-            highlighted_htmls = st.session_state.sg_highlighted_cache["data"]
+                    full_hl[d["model_name"]] = _make_highlighted_html(d["draft"], others)
 
-            # ── 凡例（グリッドの上に1回だけ表示）──
+                # セクション分割 + セクション別ハイライト
+                smaps = {d["model_name"]: _parse_sections(d["draft"]) for d in valid_drafts}
+                all_secs = []
+                for d in valid_drafts:
+                    for k in smaps[d["model_name"]]:
+                        if k != "_top" and k not in all_secs:
+                            all_secs.append(k)
+
+                sec_hl = {}
+                for sec in all_secs:
+                    sec_hl[sec] = {}
+                    sec_texts_list = [smaps[d["model_name"]].get(sec, "") for d in valid_drafts]
+                    for i, d in enumerate(valid_drafts):
+                        others_sec = [t for j, t in enumerate(sec_texts_list) if j != i and t]
+                        raw = smaps[d["model_name"]].get(sec, "")
+                        sec_hl[sec][d["model_name"]] = (
+                            _make_highlighted_html(raw, others_sec) if raw else ""
+                        )
+
+                st.session_state.sg_highlighted_cache = {
+                    "key": cache_key,
+                    "full": full_hl,
+                    "sections": sec_hl,
+                    "section_names": all_secs,
+                    "smaps": smaps,
+                }
+
+            cache      = st.session_state.sg_highlighted_cache
+            full_htmls = cache["full"]
+            sec_htmls  = cache["sections"]
+            all_secs   = cache["section_names"]
+            smaps      = cache["smaps"]
+
+            # ── 凡例 ──────────────────────────────────────────────────
             st.markdown(
                 '<div style="display:flex;align-items:center;gap:12px;'
-                'margin-bottom:14px;font-size:0.82rem;color:#6B7280;">'
+                'margin-bottom:12px;font-size:0.82rem;color:#6B7280;">'
                 '<span style="background:#FEF08A;padding:2px 12px;border-radius:4px;'
                 'color:#78350F;font-weight:700;">黄色</span>'
                 'このAIだけの独自表現・内容&nbsp;&nbsp;&nbsp;'
@@ -966,42 +1018,75 @@ elif step == 3:
                 unsafe_allow_html=True,
             )
 
-            # ── 2×2グリッドで全AI同時表示 ──
-            rows = [valid_drafts[i:i+2] for i in range(0, len(valid_drafts), 2)]
-            for row in rows:
-                cols = st.columns(2)
-                for col, d in zip(cols, row):
-                    with col:
-                        icon = AI_ICONS.get(d["model_name"], "🤖")
-                        draft_len = len(d["draft"])
+            # ── 表示モード切り替え ────────────────────────────────────
+            view_mode = st.radio(
+                "",
+                ["📄 全体比較", "🔍 セクション別比較"],
+                horizontal=True,
+                key="sg_view_mode",
+                label_visibility="collapsed",
+            )
+            st.markdown("<br>", unsafe_allow_html=True)
 
-                        # AIモデル名ヘッダー
-                        st.markdown(
-                            f'<div style="font-weight:700;font-size:0.95rem;color:#1F2937;'
-                            f'padding:6px 0 8px;">{icon} {d["model_name"]}</div>',
-                            unsafe_allow_html=True,
-                        )
+            # ── 共通グリッド描画関数 ──────────────────────────────────
+            def _render_grid(html_map: dict, char_counts: dict = None):
+                rows = [valid_drafts[i:i+2] for i in range(0, len(valid_drafts), 2)]
+                for row in rows:
+                    cols = st.columns(2)
+                    for col, d in zip(cols, row):
+                        with col:
+                            icon  = AI_ICONS.get(d["model_name"], "🤖")
+                            html  = html_map.get(d["model_name"], "")
+                            count = (char_counts or {}).get(d["model_name"], "")
+                            st.markdown(
+                                f'<div style="font-weight:700;font-size:0.92rem;'
+                                f'color:#1F2937;padding:4px 0 6px;">'
+                                f'{icon} {d["model_name"]}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            if html:
+                                st.markdown(
+                                    f'<div style="max-height:460px;overflow-y:auto;'
+                                    f'background:#FAFAFA;border:1px solid #E5E7EB;'
+                                    f'border-radius:10px;padding:12px 16px;'
+                                    f'font-size:0.83rem;line-height:1.95;color:#1F2937;">'
+                                    f'{html}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            else:
+                                st.markdown(
+                                    '<div style="background:#F3F4F6;border:1px dashed #D1D5DB;'
+                                    'border-radius:10px;padding:20px;text-align:center;'
+                                    'color:#9CA3AF;font-size:0.83rem;">このセクションなし</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            if count:
+                                st.caption(f"📝 {count}文字")
+                    st.markdown("<br>", unsafe_allow_html=True)
 
-                        # ハイライト表示（スクロール可能）
-                        st.markdown(
-                            f'<div style="max-height:500px;overflow-y:auto;background:#FAFAFA;'
-                            f'border:1px solid #E5E7EB;border-radius:10px;'
-                            f'padding:14px 18px;font-size:0.83rem;line-height:1.95;color:#1F2937;">'
-                            f'{highlighted_htmls[d["model_name"]]}'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
+            # ── 表示切り替え ──────────────────────────────────────────
+            if view_mode == "📄 全体比較":
+                char_counts = {d["model_name"]: len(d["draft"]) for d in valid_drafts}
+                _render_grid(full_htmls, char_counts)
 
-                        st.caption(f"📝 {draft_len}文字")
+            else:  # 🔍 セクション別比較
+                if all_secs:
+                    sec_tabs = st.tabs(all_secs)
+                    for sec_tab, sec_name in zip(sec_tabs, all_secs):
+                        with sec_tab:
+                            sec_char = {
+                                d["model_name"]: len(smaps[d["model_name"]].get(sec_name, ""))
+                                for d in valid_drafts
+                            }
+                            _render_grid(sec_htmls.get(sec_name, {}), sec_char)
+                else:
+                    st.info("セクション情報が見つかりませんでした。全体比較をご利用ください。")
 
-                # 行の間にスペース
-                st.markdown("<br>", unsafe_allow_html=True)
-
-            # ── 台本選択（グリッド下部にまとめて1か所）──
+            # ── 台本選択（下部）────────────────────────────────────────
             st.markdown("---")
-            model_names = [d["model_name"] for d in valid_drafts]
-            icons = [AI_ICONS.get(n, "🤖") for n in model_names]
-            radio_labels = [f"{ic} {nm}" for ic, nm in zip(icons, model_names)]
+            model_names  = [d["model_name"] for d in valid_drafts]
+            icons_list   = [AI_ICONS.get(n, "🤖") for n in model_names]
+            radio_labels = [f"{ic} {nm}" for ic, nm in zip(icons_list, model_names)]
             chosen_label = st.radio(
                 "どの台本で進みますか？",
                 radio_labels,
@@ -1009,7 +1094,8 @@ elif step == 3:
                 key="sg_draft_radio",
             )
             chosen_idx = radio_labels.index(chosen_label)
-            if st.button("✅ この台本で進む →", type="primary", use_container_width=True, key="sel_draft_go"):
+            if st.button("✅ この台本で進む →", type="primary",
+                         use_container_width=True, key="sel_draft_go"):
                 st.session_state.sg_current_draft = valid_drafts[chosen_idx]["draft"]
                 st.session_state.sg_edit_count = 0
                 st.rerun()
