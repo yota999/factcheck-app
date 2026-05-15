@@ -63,12 +63,21 @@ def _clean_claude_output(text: str) -> str:
 
 def _clean_output(text: str, model: str) -> str:
     """モデルに応じて出力を整形する"""
+    import re
     if "claude" in model:
         text = _clean_claude_output(text)
+    # 全モデル共通：Markdown記号を除去
+    # ### / ## / # 見出し記号を除去（テキストは残す）
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    # **太字** の ** を除去（テキストは残す）
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    # *斜体* の * を除去（テキストは残す）
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    # --- / === / ___ の区切り線を除去
+    text = re.sub(r'^\s*[-=_]{3,}\s*$', '', text, flags=re.MULTILINE)
     # 全モデル共通：3連以上の空行を除去
-    import re
     text = re.sub(r'\n{3,}', '\n\n', text)
-    return text
+    return text.strip()
 
 
 def _call_llm(prompt: str, model: str = "anthropic/claude-sonnet-4-6",
@@ -365,6 +374,7 @@ LINE誘導CTA（固定）：
 - 難しい概念は必ず比喩で補足する
 - 文末は「〜です」「〜ます」「〜んです」を混ぜてリズムを作る
 - 生徒の言葉は必ず「」で引用する
+- Markdown記号（###・##・#・**・*・---）は絶対に使わないこと。装飾なしのプレーンテキストで出力すること
 
 【禁止コンテンツ（一般論・新鮮味のない内容は出力しないこと）】
 以下のような「一般のトレーナーでも言える内容」は台本のどの箇所にも出力しないこと。
@@ -526,6 +536,7 @@ C. 数字・具体値：
 - 「なぜなら〜だからです」で必ず因果関係を説明する
 - 文末は「〜です」「〜ます」「〜んです」を混ぜてリズムを作る
 - エクササイズの説明・注意ポイントは台本に含めない
+- Markdown記号（###・##・#・**・*・---）は絶対に使わないこと。装飾なしのプレーンテキストで出力すること
 
 【禁止フレーズ（絶対に出力しないこと）】
 以下のフレーズ・表現は台本のどの箇所にも使用禁止。言い換えも不可。
