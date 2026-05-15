@@ -744,8 +744,31 @@ st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
 # ── 結果表示 ──
 if st.session_state.results:
+
+    # ── ① ランキング（先に表示） ──
+    if st.session_state.judge_claude or st.session_state.judge_chatgpt:
+        j_col1, j_col2 = st.columns(2, gap="medium")
+
+        with j_col1:
+            safe = html_module.escape(st.session_state.judge_claude)
+            st.markdown(f"""
+<div class="judge-section judge-section-claude">
+  <div class="judge-header judge-header-claude">⚖️ &nbsp;Claude による親和性ランキング</div>
+  <div class="judge-body">{safe}</div>
+</div>""", unsafe_allow_html=True)
+
+        with j_col2:
+            safe = html_module.escape(st.session_state.judge_chatgpt)
+            st.markdown(f"""
+<div class="judge-section judge-section-chatgpt">
+  <div class="judge-header judge-header-chatgpt">⚖️ &nbsp;ChatGPT による親和性ランキング</div>
+  <div class="judge-body">{safe}</div>
+</div>""", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── ② 各AIのネタカード ──
     col_L, col_R = st.columns(2, gap="medium")
-    # 左：Claude・Gemini　右：ChatGPT・Grok（固定）
     col_map = {"Claude": col_L, "Gemini": col_L, "ChatGPT": col_R, "Grok": col_R}
     display_order = ["Claude", "ChatGPT", "Gemini", "Grok"]
 
@@ -771,26 +794,6 @@ if st.session_state.results:
         with col_map[name]:
             st.markdown(card, unsafe_allow_html=True)
 
-    # ── ランキング表示（2列） ──
-    if st.session_state.judge_claude or st.session_state.judge_chatgpt:
-        st.markdown("<br>", unsafe_allow_html=True)
-        j_col1, j_col2 = st.columns(2, gap="medium")
-
-        with j_col1:
-            safe = html_module.escape(st.session_state.judge_claude)
-            st.markdown(f"""
-<div class="judge-section judge-section-claude">
-  <div class="judge-header judge-header-claude">⚖️ &nbsp;Claude による親和性ランキング</div>
-  <div class="judge-body">{safe}</div>
-</div>""", unsafe_allow_html=True)
-
-        with j_col2:
-            safe = html_module.escape(st.session_state.judge_chatgpt)
-            st.markdown(f"""
-<div class="judge-section judge-section-chatgpt">
-  <div class="judge-header judge-header-chatgpt">⚖️ &nbsp;ChatGPT による親和性ランキング</div>
-  <div class="judge-body">{safe}</div>
-</div>""", unsafe_allow_html=True)
 else:
     st.markdown(
         '<div class="empty-state">「ランダムでネタを生成」を押してスタート</div>',
