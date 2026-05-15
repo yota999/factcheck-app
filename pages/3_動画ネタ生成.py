@@ -836,32 +836,39 @@ if st.session_state.results:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── ② 各AIのネタカード ──
-    col_L, col_R = st.columns(2, gap="medium")
-    col_map = {"Claude": col_L, "Gemini": col_L, "ChatGPT": col_R, "Grok": col_R}
-    display_order = ["Claude", "ChatGPT", "Gemini", "Grok"]
-
-    for name in display_order:
+    # ── ② 各AIのネタカード（2行×2列で位置を揃える） ──
+    def render_card(name):
         if name not in st.session_state.results:
-            continue
+            return
         data      = st.session_state.results[name]
         meta      = AGENT_META[name]
         color     = meta["color"]
         glow      = meta["glow"]
         formatted = format_content(data["content"])
         angle     = html_module.escape(data["angle"])
-
-        card = f"""
-<div class="idea-card" style="box-shadow: 0 0 40px rgba({glow},0.08), 0 8px 32px rgba(0,0,0,0.5);">
-  <div class="card-glow-bar" style="background: linear-gradient(90deg, {color}, transparent);"></div>
+        st.markdown(f"""
+<div class="idea-card" style="box-shadow:0 0 40px rgba({glow},0.08),0 8px 32px rgba(0,0,0,0.5);">
+  <div class="card-glow-bar" style="background:linear-gradient(90deg,{color},transparent);"></div>
   <div class="card-header-row">
     <span class="card-agent-name" style="color:{color};">{name}</span>
     <span class="card-angle-tag">{angle}</span>
   </div>
   <div class="card-content">{formatted}</div>
-</div>"""
-        with col_map[name]:
-            st.markdown(card, unsafe_allow_html=True)
+</div>""", unsafe_allow_html=True)
+
+    # 1行目：Claude（左）・ChatGPT（右）
+    row1_L, row1_R = st.columns(2, gap="medium")
+    with row1_L:
+        render_card("Claude")
+    with row1_R:
+        render_card("ChatGPT")
+
+    # 2行目：Gemini（左）・Grok（右）— 必ず同じ高さからスタート
+    row2_L, row2_R = st.columns(2, gap="medium")
+    with row2_L:
+        render_card("Gemini")
+    with row2_R:
+        render_card("Grok")
 
 else:
     st.markdown(
