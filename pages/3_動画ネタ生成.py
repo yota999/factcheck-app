@@ -279,6 +279,77 @@ def run_judge_claude(results: dict) -> str:
     )
     return msg.content[0].text
 
+def format_judge(text: str, color: str) -> str:
+    """ランキングテキストを均一なHTMLカードに変換する"""
+    MEDALS = {"1": "🥇", "2": "🥈", "3": "🥉", "4": "4️⃣"}
+    RANK_LABELS = {"1": "1位", "2": "2位", "3": "3位", "4": "4位"}
+
+    lines = [l.strip() for l in text.splitlines()]
+    blocks = []
+    current = {}
+
+    for line in lines:
+        if not line:
+            continue
+        # 順位行の検出（🥇〜 or 4位： などのパターン）
+        rank_num = None
+        for num in ["1", "2", "3", "4"]:
+            if (f"{num}位" in line) and ("位：" in line or "位: " in line):
+                rank_num = num
+                break
+        if rank_num:
+            if current:
+                blocks.append(current)
+            ai_name = line.split("：")[-1].split(":")[-1].strip()
+            current = {"rank": rank_num, "ai": ai_name, "theme": "", "reason": ""}
+        elif line.startswith("テーマ"):
+            val = line.split("：")[-1].split(":")[-1].strip()
+            current["theme"] = val
+        elif line.startswith("理由"):
+            val = line.split("：")[-1].split(":")[-1].strip()
+            current["reason"] = val
+        elif current.get("reason") and not line.startswith("【"):
+            # 理由の続き
+            current["reason"] += " " + line
+        elif line.startswith("【一言総評】") or line.startswith("一言総評"):
+            if current:
+                blocks.append(current)
+                current = {}
+            blocks.append({"rank": "summary", "text": ""})
+        elif blocks and blocks[-1].get("rank") == "summary":
+            blocks[-1]["text"] += line + " "
+
+    if current:
+        blocks.append(current)
+
+    html = ""
+    for b in blocks:
+        if b.get("rank") == "summary":
+            txt = html_module.escape(b.get("text", "").strip())
+            html += f"""
+<div style="margin-top:20px; padding:14px 16px; background:rgba(255,255,255,0.03);
+     border-left:3px solid {color}; border-radius:0 8px 8px 0;">
+  <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; color:{color}; margin-bottom:6px;">一言総評</div>
+  <div style="font-size:13px; color:#e2e8f0; line-height:1.7;">{txt}</div>
+</div>"""
+        else:
+            rank = b.get("rank", "")
+            medal = MEDALS.get(rank, "")
+            label = RANK_LABELS.get(rank, f"{rank}位")
+            ai    = html_module.escape(b.get("ai", ""))
+            theme = html_module.escape(b.get("theme", ""))
+            reason = html_module.escape(b.get("reason", ""))
+            html += f"""
+<div style="display:flex; gap:14px; margin-bottom:20px; align-items:flex-start;">
+  <div style="font-size:26px; line-height:1; flex-shrink:0; padding-top:2px;">{medal}</div>
+  <div style="flex:1;">
+    <div style="font-size:12px; font-weight:700; color:{color}; letter-spacing:0.05em; margin-bottom:4px;">{label}　{ai}</div>
+    {"" if not theme else f'<div style="font-size:12px; color:#e2e8f0; background:rgba(255,255,255,0.05); border-radius:6px; padding:5px 10px; margin-bottom:6px;">{theme}</div>'}
+    <div style="font-size:13px; color:#e2e8f0; line-height:1.75;">{reason}</div>
+  </div>
+</div>"""
+    return html
+
 def run_judge_chatgpt(results: dict) -> str:
     from openai import OpenAI
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -643,11 +714,9 @@ div[data-testid="stButton"] > button:not([kind]):hover {
 .judge-header-chatgpt::after { background: linear-gradient(90deg, rgba(52,211,153,0.3), transparent); }
 .judge-body {
     font-size: 14px;
-    line-height: 2;
-    color: #e2e8f0 !important;
-    white-space: pre-wrap;
+    line-height: 1.8;
+    color: #e2e8f0;
 }
-.judge-body * { color: #e2e8f0 !important; }
 
 /* 空状態 */
 .empty-state {
@@ -750,19 +819,19 @@ if st.session_state.results:
         j_col1, j_col2 = st.columns(2, gap="medium")
 
         with j_col1:
-            safe = html_module.escape(st.session_state.judge_claude)
+            formatted_judge = format_judge(st.session_state.judge_claude, "#a78bfa")
             st.markdown(f"""
 <div class="judge-section judge-section-claude">
   <div class="judge-header judge-header-claude">⚖️ &nbsp;Claude による親和性ランキング</div>
-  <div class="judge-body">{safe}</div>
+  <div class="judge-body">{formatted_judge}</div>
 </div>""", unsafe_allow_html=True)
 
         with j_col2:
-            safe = html_module.escape(st.session_state.judge_chatgpt)
+            formatted_judge = format_judge(st.session_state.judge_chatgpt, "#34d399")
             st.markdown(f"""
 <div class="judge-section judge-section-chatgpt">
   <div class="judge-header judge-header-chatgpt">⚖️ &nbsp;ChatGPT による親和性ランキング</div>
-  <div class="judge-body">{safe}</div>
+  <div class="judge-body">{formatted_judge}</div>
 </div>""", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
