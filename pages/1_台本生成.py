@@ -1042,7 +1042,8 @@ elif step == 3:
             st.markdown("<br>", unsafe_allow_html=True)
 
             # ── 共通グリッド描画関数 ──────────────────────────────────
-            def _render_grid(html_map: dict, char_counts: dict = None, text_map: dict = None):
+            def _render_grid(html_map: dict, char_counts: dict = None,
+                             text_map: dict = None, ctx: str = ""):
                 rows = [valid_drafts[i:i+2] for i in range(0, len(valid_drafts), 2)]
                 for row in rows:
                     cols = st.columns(2)
@@ -1053,12 +1054,28 @@ elif step == 3:
                             count = (char_counts or {}).get(d["model_name"], "")
                             plain = (text_map or {}).get(d["model_name"], "")
 
-                            st.markdown(
-                                f'<div style="font-weight:700;font-size:0.92rem;'
-                                f'color:#1F2937;padding:4px 0 6px;">'
-                                f'{icon} {d["model_name"]}</div>',
-                                unsafe_allow_html=True,
-                            )
+                            # セッションキー（コピーパネルの開閉状態）
+                            cp_state = f"sg_cp_{d['model_name']}_{ctx}"
+                            cp_btn   = f"sg_cpbtn_{d['model_name']}_{ctx}"
+
+                            # ── ヘッダー行：AI名（左）＋📋ボタン（右） ──
+                            h_name, h_btn = st.columns([5, 1])
+                            with h_name:
+                                st.markdown(
+                                    f'<div style="font-weight:700;font-size:0.92rem;'
+                                    f'color:#1F2937;padding:6px 0 4px;">'
+                                    f'{icon} {d["model_name"]}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            with h_btn:
+                                if plain and st.button(
+                                    "📋", key=cp_btn,
+                                    help="クリックでコピー用テキストを表示",
+                                    use_container_width=True,
+                                ):
+                                    st.session_state[cp_state] = not st.session_state.get(cp_state, False)
+
+                            # ── カード本体 ──
                             if html:
                                 st.markdown(
                                     f'<div style="max-height:460px;overflow-y:auto;'
@@ -1077,17 +1094,18 @@ elif step == 3:
                                 )
                             if count:
                                 st.caption(f"📝 {count}文字")
-                            # コピー用テキスト（st.code の右上ボタンでワンクリックコピー）
-                            if plain:
-                                with st.expander("📋 テキストをコピー"):
-                                    st.code(plain, language=None)
+
+                            # ── 📋ボタンで開閉するコピー用コードブロック ──
+                            if plain and st.session_state.get(cp_state, False):
+                                st.code(plain, language=None)
+
                     st.markdown("<br>", unsafe_allow_html=True)
 
             # ── 表示切り替え ──────────────────────────────────────────
             if view_mode == "📄 全体比較":
                 char_counts = {d["model_name"]: len(d["draft"]) for d in valid_drafts}
                 full_texts  = {d["model_name"]: d["draft"] for d in valid_drafts}
-                _render_grid(full_htmls, char_counts, full_texts)
+                _render_grid(full_htmls, char_counts, full_texts, ctx="full")
 
             else:  # 🔍 セクション別比較
                 if all_secs:
@@ -1102,7 +1120,10 @@ elif step == 3:
                                 d["model_name"]: smaps[d["model_name"]].get(sec_name, "")
                                 for d in valid_drafts
                             }
-                            _render_grid(sec_htmls.get(sec_name, {}), sec_char, sec_texts)
+                            _render_grid(
+                                sec_htmls.get(sec_name, {}), sec_char, sec_texts,
+                                ctx=f"sec_{sec_name}",
+                            )
                 else:
                     st.info("セクション情報が見つかりませんでした。全体比較をご利用ください。")
 
