@@ -1041,32 +1041,8 @@ elif step == 3:
             )
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # ── コピーボタン用JavaScript（onclick属性に埋め込む） ────────
-            _COPY_JS = (
-                "var t=this.dataset.copytext;var b=this;"
-                "if(navigator.clipboard){"
-                "navigator.clipboard.writeText(t).then(function(){"
-                "b.innerHTML='✅ コピー完了';"
-                "setTimeout(function(){b.innerHTML='📋 コピー'},1500)"
-                "}).catch(function(){"
-                "var ta=document.createElement('textarea');"
-                "ta.value=t;document.body.appendChild(ta);ta.select();"
-                "document.execCommand('copy');document.body.removeChild(ta);"
-                "b.innerHTML='✅ コピー完了';"
-                "setTimeout(function(){b.innerHTML='📋 コピー'},1500)"
-                "})"
-                "}else{"
-                "var ta=document.createElement('textarea');"
-                "ta.value=t;document.body.appendChild(ta);ta.select();"
-                "document.execCommand('copy');document.body.removeChild(ta);"
-                "b.innerHTML='✅ コピー完了';"
-                "setTimeout(function(){b.innerHTML='📋 コピー'},1500)"
-                "}"
-            )
-
             # ── 共通グリッド描画関数 ──────────────────────────────────
             def _render_grid(html_map: dict, char_counts: dict = None, text_map: dict = None):
-                from html import escape as _he
                 rows = [valid_drafts[i:i+2] for i in range(0, len(valid_drafts), 2)]
                 for row in rows:
                     cols = st.columns(2)
@@ -1077,25 +1053,10 @@ elif step == 3:
                             count = (char_counts or {}).get(d["model_name"], "")
                             plain = (text_map or {}).get(d["model_name"], "")
 
-                            # コピーボタン（テキストがある場合のみ表示）
-                            if plain:
-                                esc_plain = _he(plain, quote=True)
-                                copy_btn = (
-                                    f'<button data-copytext="{esc_plain}" '
-                                    f'onclick="{_COPY_JS}" '
-                                    f'style="float:right;background:#F9FAFB;'
-                                    f'border:1px solid #D1D5DB;border-radius:6px;'
-                                    f'padding:2px 10px;font-size:0.75rem;cursor:pointer;'
-                                    f'color:#374151;line-height:1.8;">📋 コピー</button>'
-                                )
-                            else:
-                                copy_btn = ""
-
                             st.markdown(
                                 f'<div style="font-weight:700;font-size:0.92rem;'
-                                f'color:#1F2937;padding:4px 0 6px;'
-                                f'display:flex;justify-content:space-between;align-items:center;">'
-                                f'<span>{icon} {d["model_name"]}</span>{copy_btn}</div>',
+                                f'color:#1F2937;padding:4px 0 6px;">'
+                                f'{icon} {d["model_name"]}</div>',
                                 unsafe_allow_html=True,
                             )
                             if html:
@@ -1116,6 +1077,10 @@ elif step == 3:
                                 )
                             if count:
                                 st.caption(f"📝 {count}文字")
+                            # コピー用テキスト（st.code の右上ボタンでワンクリックコピー）
+                            if plain:
+                                with st.expander("📋 テキストをコピー"):
+                                    st.code(plain, language=None)
                     st.markdown("<br>", unsafe_allow_html=True)
 
             # ── 表示切り替え ──────────────────────────────────────────
