@@ -1041,8 +1041,32 @@ elif step == 3:
             )
             st.markdown("<br>", unsafe_allow_html=True)
 
+            # ── コピーボタン用JavaScript（onclick属性に埋め込む） ────────
+            _COPY_JS = (
+                "var t=this.dataset.copytext;var b=this;"
+                "if(navigator.clipboard){"
+                "navigator.clipboard.writeText(t).then(function(){"
+                "b.innerHTML='✅ コピー完了';"
+                "setTimeout(function(){b.innerHTML='📋 コピー'},1500)"
+                "}).catch(function(){"
+                "var ta=document.createElement('textarea');"
+                "ta.value=t;document.body.appendChild(ta);ta.select();"
+                "document.execCommand('copy');document.body.removeChild(ta);"
+                "b.innerHTML='✅ コピー完了';"
+                "setTimeout(function(){b.innerHTML='📋 コピー'},1500)"
+                "})"
+                "}else{"
+                "var ta=document.createElement('textarea');"
+                "ta.value=t;document.body.appendChild(ta);ta.select();"
+                "document.execCommand('copy');document.body.removeChild(ta);"
+                "b.innerHTML='✅ コピー完了';"
+                "setTimeout(function(){b.innerHTML='📋 コピー'},1500)"
+                "}"
+            )
+
             # ── 共通グリッド描画関数 ──────────────────────────────────
-            def _render_grid(html_map: dict, char_counts: dict = None):
+            def _render_grid(html_map: dict, char_counts: dict = None, text_map: dict = None):
+                from html import escape as _he
                 rows = [valid_drafts[i:i+2] for i in range(0, len(valid_drafts), 2)]
                 for row in rows:
                     cols = st.columns(2)
@@ -1051,10 +1075,27 @@ elif step == 3:
                             icon  = AI_ICONS.get(d["model_name"], "🤖")
                             html  = html_map.get(d["model_name"], "")
                             count = (char_counts or {}).get(d["model_name"], "")
+                            plain = (text_map or {}).get(d["model_name"], "")
+
+                            # コピーボタン（テキストがある場合のみ表示）
+                            if plain:
+                                esc_plain = _he(plain, quote=True)
+                                copy_btn = (
+                                    f'<button data-copytext="{esc_plain}" '
+                                    f'onclick="{_COPY_JS}" '
+                                    f'style="float:right;background:#F9FAFB;'
+                                    f'border:1px solid #D1D5DB;border-radius:6px;'
+                                    f'padding:2px 10px;font-size:0.75rem;cursor:pointer;'
+                                    f'color:#374151;line-height:1.8;">📋 コピー</button>'
+                                )
+                            else:
+                                copy_btn = ""
+
                             st.markdown(
                                 f'<div style="font-weight:700;font-size:0.92rem;'
-                                f'color:#1F2937;padding:4px 0 6px;">'
-                                f'{icon} {d["model_name"]}</div>',
+                                f'color:#1F2937;padding:4px 0 6px;'
+                                f'display:flex;justify-content:space-between;align-items:center;">'
+                                f'<span>{icon} {d["model_name"]}</span>{copy_btn}</div>',
                                 unsafe_allow_html=True,
                             )
                             if html:
@@ -1080,7 +1121,8 @@ elif step == 3:
             # ── 表示切り替え ──────────────────────────────────────────
             if view_mode == "📄 全体比較":
                 char_counts = {d["model_name"]: len(d["draft"]) for d in valid_drafts}
-                _render_grid(full_htmls, char_counts)
+                full_texts  = {d["model_name"]: d["draft"] for d in valid_drafts}
+                _render_grid(full_htmls, char_counts, full_texts)
 
             else:  # 🔍 セクション別比較
                 if all_secs:
@@ -1091,7 +1133,11 @@ elif step == 3:
                                 d["model_name"]: len(smaps[d["model_name"]].get(sec_name, ""))
                                 for d in valid_drafts
                             }
-                            _render_grid(sec_htmls.get(sec_name, {}), sec_char)
+                            sec_texts = {
+                                d["model_name"]: smaps[d["model_name"]].get(sec_name, "")
+                                for d in valid_drafts
+                            }
+                            _render_grid(sec_htmls.get(sec_name, {}), sec_char, sec_texts)
                 else:
                     st.info("セクション情報が見つかりませんでした。全体比較をご利用ください。")
 
