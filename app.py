@@ -369,10 +369,10 @@ if st.session_state.fc_done and st.session_state.fc_results:
         "Grok 3 Mini":       {"color": "#374151", "bg": "#F9FAFB", "border": "#D1D5DB", "icon": "⚫"},
     }
     VERDICT_MAP = {
-        "✅": ("概ね正確",   "#059669", "#ECFDF5"),
-        "⚠️": ("一部要注意", "#D97706", "#FFFBEB"),
-        "❌": ("問題あり",   "#DC2626", "#FEF2F2"),
-        "❓": ("確認中",     "#6B7280", "#F9FAFB"),
+        "✅": ("正確",   "#059669", "#ECFDF5"),
+        "⚠️": ("要注意", "#D97706", "#FFFBEB"),
+        "❌": ("危険",   "#DC2626", "#FEF2F2"),
+        "❓": ("確認中", "#6B7280", "#F9FAFB"),
     }
 
     verdicts = [r.get("verdict", "❓") for r in fc_results if r]
@@ -382,7 +382,7 @@ if st.session_state.fc_done and st.session_state.fc_results:
     st.markdown("### ✏️ 自動修正")
 
     if not has_issues:
-        st.success("✅ 4つのAI全てで概ね正確と判定されました。修正は不要です。")
+        st.success("✅ 4つのAI全てで正確と判定されました。修正は不要です。")
     else:
         # 修正済みなら表示、未実行なら生成ボタン（自動実行されなかった場合の保険）
         if not st.session_state.fc_correction:
