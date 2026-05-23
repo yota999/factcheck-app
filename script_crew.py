@@ -1475,6 +1475,9 @@ def generate_single_draft(
             # リール専用：セクション内の余分な空行を除去
             # 【セクション名】の直前の空行は保持し、それ以外の \n\n は \n に圧縮
             if script_type == "reel":
+                # ① セクションヘッダー直後の空行を除去（【〇〇】\n\n → 【〇〇】\n）
+                draft = re.sub(r'(【[^】]+】)\n\n', r'\1\n', draft)
+                # ② 【セクション名】の直前以外の空行を全て除去
                 draft = re.sub(r'\n\n(?!【)', '\n', draft)
         return draft
     except Exception as e:
