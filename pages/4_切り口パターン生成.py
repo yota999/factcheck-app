@@ -226,7 +226,7 @@ st.markdown("""
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text; margin-bottom: 8px;
 }
-.page-subtitle { font-size: 13px; color: #4b5563; letter-spacing: 0.05em; }
+.page-subtitle { font-size: 13px; color: #94a3b8; letter-spacing: 0.05em; }
 .divider {
     height: 1px;
     background: linear-gradient(90deg, transparent, #1e1e38, transparent);
@@ -234,7 +234,7 @@ st.markdown("""
 }
 .section-label {
     font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
-    text-transform: uppercase; color: #374151; margin-bottom: 10px;
+    text-transform: uppercase; color: #94a3b8; margin-bottom: 10px;
 }
 .pattern-card {
     position: relative; border-radius: 20px; padding: 28px 30px;
@@ -292,7 +292,7 @@ div[data-testid="stButton"] > button[kind="secondary"] {
     border-color: #1d4ed8 !important;
     box-shadow: 0 0 0 3px rgba(29,78,216,0.15) !important;
 }
-[data-testid="stTextInput"] input::placeholder { color: #374151 !important; }
+[data-testid="stTextInput"] input::placeholder { color: transparent !important; }
 .theme-badge {
     display: inline-block; font-size: 13px; font-weight: 600;
     color: #e2e8f0; background: rgba(255,255,255,0.05);
@@ -301,10 +301,12 @@ div[data-testid="stButton"] > button[kind="secondary"] {
 }
 .empty-state {
     text-align: center; padding: 80px 0;
-    color: #1f2937; font-size: 14px; letter-spacing: 0.05em;
+    color: #4b5563; font-size: 14px; letter-spacing: 0.05em;
 }
 h1, h2, h3, p, label { color: #e2e8f0 !important; }
-[data-testid="stMarkdownContainer"] p { color: #6b7280 !important; }
+[data-testid="stMarkdownContainer"] p { color: #94a3b8 !important; }
+[data-testid="stMarkdownContainer"] { color: #e2e8f0 !important; }
+span, div { color: inherit; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -328,7 +330,7 @@ col_inp, col_btn = st.columns([5, 1])
 with col_inp:
     theme_input = st.text_input(
         "theme",
-        placeholder="例）内もも痩せたいなら開脚ストレッチはダメ",
+        placeholder="",
         label_visibility="collapsed",
     )
 with col_btn:
