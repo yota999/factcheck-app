@@ -374,27 +374,33 @@ def run_judge_chatgpt(results: dict) -> str:
 # ──────────────────────────────────────────────────────────────
 # 単体再生成（1つのAIだけ指示付きで再生成）
 # ──────────────────────────────────────────────────────────────
-def build_refine_prompt(original_content: str, instruction: str) -> str:
-    return f"""以下は先ほど生成した動画ネタのアイデアです：
+def build_refine_prompt(original_content: str, instruction: str, history: list[str] | None = None) -> str:
+    history_section = ""
+    if history:
+        history_section = "【これまでの改善指示の履歴】\n"
+        for i, h in enumerate(history, 1):
+            history_section += f"  {i}回目：{h}\n"
+        history_section += "\n"
 
+    return f"""{history_section}【現在の出力（直前のバージョン）】
 ---
 {original_content}
 ---
 
-ユーザーからの修正・改善の指示：
+【今回の新しい指示】
 {instruction}
 
-上記の指示に従って改善したバージョンを出力してください。
+上記の履歴・現在の出力・今回の指示をすべて踏まえて、改善したバージョンを出力してください。
 出力形式は同じ形式（専門的なネタ + → 例え：）を維持すること。"""
 
 
-def run_all_brush_up(results: dict, instruction: str) -> dict:
-    """全AIに同じ指示を出して一括再生成する"""
+def run_all_brush_up(results: dict, instruction: str, history: list[str] | None = None) -> dict:
+    """全AIに指示履歴＋今回の指示を渡して一括再生成する"""
     new_results = {}
     def refine_one(name):
         original = results[name]["content"]
-        prompt = build_refine_prompt(original, instruction)
-        return GEN_FUNCS[name](results[name]["angle"], "", None) if False else _call_ai(name, prompt)
+        prompt = build_refine_prompt(original, instruction, history)
+        return _call_ai(name, prompt)
 
     def _call_ai(name, prompt):
         from anthropic import Anthropic
@@ -941,7 +947,11 @@ if st.session_state.results:
     if brush_clicked:
         if brush_input.strip():
             with st.spinner("全AIが指示に従って再生成中 + 審査中..."):
-                new_results = run_all_brush_up(st.session_state.results, brush_input.strip())
+                new_results = run_all_brush_up(
+                    st.session_state.results,
+                    brush_input.strip(),
+                    history=st.session_state.brush_log,  # 過去の指示をすべて渡す
+                )
                 with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
                     f1 = ex.submit(run_judge_claude, new_results)
                     f2 = ex.submit(run_judge_chatgpt, new_results)
