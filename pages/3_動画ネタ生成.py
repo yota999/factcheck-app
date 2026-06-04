@@ -914,7 +914,50 @@ st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 # ── 結果表示 ──
 if st.session_state.results:
 
-    # ── ① ランキング（先に表示） ──
+    # ── ① ブラッシュアップ入力（最上部） ──
+    st.markdown('<div class="section-label">全AIへの指示 — ブラッシュアップ</div>', unsafe_allow_html=True)
+
+    if st.session_state.brush_log:
+        for entry in st.session_state.brush_log:
+            st.markdown(f"""
+<div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:8px;">
+  <div style="background:#1e1e38; border-radius:20px 20px 4px 20px; padding:9px 16px;
+       font-size:13px; color:#e2e8f0; max-width:80%;">
+    {html_module.escape(entry)}
+  </div>
+</div>""", unsafe_allow_html=True)
+
+    b_col1, b_col2 = st.columns([5, 1])
+    with b_col1:
+        brush_input = st.text_input(
+            "brush",
+            placeholder="例）40代女性が共感しやすい方向に絞って / 例えをもっとわかりやすく / 腸以外の視点で",
+            label_visibility="collapsed",
+            key="brush_input_field",
+        )
+    with b_col2:
+        brush_clicked = st.button("全AI指示 →", use_container_width=True, key="brush_btn")
+
+    if brush_clicked:
+        if brush_input.strip():
+            with st.spinner("全AIが指示に従って再生成中 + 審査中..."):
+                new_results = run_all_brush_up(st.session_state.results, brush_input.strip())
+                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+                    f1 = ex.submit(run_judge_claude, new_results)
+                    f2 = ex.submit(run_judge_chatgpt, new_results)
+                    new_judge_claude  = f1.result()
+                    new_judge_chatgpt = f2.result()
+            st.session_state.results       = new_results
+            st.session_state.judge_claude  = new_judge_claude
+            st.session_state.judge_chatgpt = new_judge_chatgpt
+            st.session_state.brush_log.append(brush_input.strip())
+            st.rerun()
+        else:
+            st.warning("指示を入力してください。")
+
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+
+    # ── ② ランキング ──
     if st.session_state.judge_claude or st.session_state.judge_chatgpt:
         j_col1, j_col2 = st.columns(2, gap="medium")
 
@@ -936,7 +979,7 @@ if st.session_state.results:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── ② 各AIのネタカード（2行×2列で位置を揃える） ──
+    # ── ③ 各AIのネタカード（2行×2列） ──
     def render_card(name):
         if name not in st.session_state.results:
             return
@@ -946,8 +989,6 @@ if st.session_state.results:
         glow      = meta["glow"]
         formatted = format_content(data["content"])
         angle     = html_module.escape(data["angle"])
-
-        # カード本体
         st.markdown(f"""
 <div class="idea-card" style="box-shadow:0 0 40px rgba({glow},0.08),0 8px 32px rgba(0,0,0,0.5);">
   <div class="card-glow-bar" style="background:linear-gradient(90deg,{color},transparent);"></div>
@@ -958,66 +999,13 @@ if st.session_state.results:
   <div class="card-content">{formatted}</div>
 </div>""", unsafe_allow_html=True)
 
-
-    # 1行目：Claude（左）・ChatGPT（右）
     row1_L, row1_R = st.columns(2, gap="medium")
-    with row1_L:
-        render_card("Claude")
-    with row1_R:
-        render_card("ChatGPT")
+    with row1_L: render_card("Claude")
+    with row1_R: render_card("ChatGPT")
 
-    # 2行目：Gemini（左）・Grok（右）— 必ず同じ高さからスタート
     row2_L, row2_R = st.columns(2, gap="medium")
-    with row2_L:
-        render_card("Gemini")
-    with row2_R:
-        render_card("Grok")
-
-    # ── ③ ブラッシュアップ会話エリア ──
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-label">全AIへの指示 — ブラッシュアップ</div>', unsafe_allow_html=True)
-
-    # 指示履歴を表示
-    if st.session_state.brush_log:
-        for entry in st.session_state.brush_log:
-            st.markdown(f"""
-<div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-  <div style="background:#1e1e38; border-radius:20px 20px 4px 20px; padding:10px 16px;
-       font-size:13px; color:#e2e8f0; max-width:80%;">
-    {html_module.escape(entry)}
-  </div>
-</div>""", unsafe_allow_html=True)
-
-    # 入力欄
-    b_col1, b_col2 = st.columns([5, 1])
-    with b_col1:
-        brush_input = st.text_input(
-            "brush",
-            placeholder="例）40代女性がより共感しやすい方向に絞って / 例えをもっとわかりやすく / 腸以外の視点で出して",
-            label_visibility="collapsed",
-            key="brush_input_field",
-        )
-    with b_col2:
-        brush_clicked = st.button("全AI指示 →", use_container_width=True, key="brush_btn")
-
-    if brush_clicked:
-        if brush_input.strip():
-            with st.spinner("全AIが指示に従って再生成中..."):
-                new_results = run_all_brush_up(st.session_state.results, brush_input.strip())
-                new_judge_claude, new_judge_chatgpt = "", ""
-                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
-                    f1 = ex.submit(run_judge_claude, new_results)
-                    f2 = ex.submit(run_judge_chatgpt, new_results)
-                    new_judge_claude  = f1.result()
-                    new_judge_chatgpt = f2.result()
-            st.session_state.results       = new_results
-            st.session_state.judge_claude  = new_judge_claude
-            st.session_state.judge_chatgpt = new_judge_chatgpt
-            st.session_state.brush_log.append(brush_input.strip())
-            st.rerun()
-        else:
-            st.warning("指示を入力してください。")
+    with row2_L: render_card("Gemini")
+    with row2_R: render_card("Grok")
 
 else:
     st.markdown(
