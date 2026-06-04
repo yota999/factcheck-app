@@ -388,59 +388,64 @@ def build_refine_prompt(original_content: str, instruction: str) -> str:
 出力形式は同じ形式（専門的なネタ + → 例え：）を維持すること。"""
 
 
-def run_single_refine(name: str, original_content: str, instruction: str) -> str:
-    """1つのAIだけ指示付きで再生成する"""
-    prompt = build_refine_prompt(original_content, instruction)
-    from anthropic import Anthropic
-    from openai import OpenAI
-    from google import genai as _genai
-    from google.genai import types as _types
+def run_all_brush_up(results: dict, instruction: str) -> dict:
+    """全AIに同じ指示を出して一括再生成する"""
+    new_results = {}
+    def refine_one(name):
+        original = results[name]["content"]
+        prompt = build_refine_prompt(original, instruction)
+        return GEN_FUNCS[name](results[name]["angle"], "", None) if False else _call_ai(name, prompt)
 
-    if name == "Claude":
-        client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        msg = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return msg.content[0].text
+    def _call_ai(name, prompt):
+        from anthropic import Anthropic
+        from openai import OpenAI
+        from google import genai as _genai
+        from google.genai import types as _types
+        if name == "Claude":
+            client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            msg = client.messages.create(
+                model="claude-sonnet-4-6", max_tokens=1024,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return msg.content[0].text
+        elif name == "ChatGPT":
+            client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            res = client.chat.completions.create(
+                model="gpt-4o", max_tokens=1024,
+                messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
+            )
+            return res.choices[0].message.content
+        elif name == "Gemini":
+            client = _genai.Client(api_key=os.getenv("GOOGLE_API_KEY", ""))
+            res = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=SYSTEM_PROMPT + "\n\n" + prompt,
+                config=_types.GenerateContentConfig(
+                    max_output_tokens=1024,
+                    thinking_config=_types.ThinkingConfig(thinking_budget=0),
+                ),
+            )
+            return res.text
+        elif name == "Grok":
+            client = OpenAI(api_key=os.getenv("XAI_API_KEY", ""), base_url="https://api.x.ai/v1")
+            res = client.chat.completions.create(
+                model="grok-3", max_tokens=1024,
+                messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
+            )
+            return res.choices[0].message.content
+        return "⚠️ 不明なAI名"
 
-    elif name == "ChatGPT":
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        res = client.chat.completions.create(
-            model="gpt-4o", max_tokens=1024,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-        )
-        return res.choices[0].message.content
-
-    elif name == "Gemini":
-        client = _genai.Client(api_key=os.getenv("GOOGLE_API_KEY", ""))
-        res = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=SYSTEM_PROMPT + "\n\n" + prompt,
-            config=_types.GenerateContentConfig(
-                max_output_tokens=1024,
-                thinking_config=_types.ThinkingConfig(thinking_budget=0),
-            ),
-        )
-        return res.text
-
-    elif name == "Grok":
-        client = OpenAI(api_key=os.getenv("XAI_API_KEY", ""), base_url="https://api.x.ai/v1")
-        res = client.chat.completions.create(
-            model="grok-3", max_tokens=1024,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-        )
-        return res.choices[0].message.content
-
-    return "⚠️ 不明なAI名です"
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        futures = {ex.submit(refine_one, name): name for name in AGENT_ORDER if name in results}
+        for future in concurrent.futures.as_completed(futures):
+            name = futures[future]
+            try:
+                content = future.result()
+            except Exception as e:
+                content = f"⚠️ エラー\n{e}"
+            new_results[name] = {"content": content, "angle": results[name]["angle"]}
+    return new_results
 
 
 # ──────────────────────────────────────────────────────────────
@@ -834,13 +839,13 @@ h1, h2, h3, p, label { color: #e2e8f0 !important; }
 """, unsafe_allow_html=True)
 
 # ── セッション初期化 ──
-for key, default in [("results", {}), ("history", []), ("judge_claude", ""), ("judge_chatgpt", "")]:
+for key, default in [
+    ("results", {}), ("history", []),
+    ("judge_claude", ""), ("judge_chatgpt", ""),
+    ("brush_log", []),   # ブラッシュアップの指示履歴
+]:
     if key not in st.session_state:
         st.session_state[key] = default
-# 各AIの指示入力欄
-for name in AGENT_ORDER:
-    if f"refine_input_{name}" not in st.session_state:
-        st.session_state[f"refine_input_{name}"] = ""
 
 # ── ヘッダー ──
 st.markdown("""
@@ -901,6 +906,7 @@ if st.session_state.history:
             st.session_state.results = {}
             st.session_state.judge_claude = ""
             st.session_state.judge_chatgpt = ""
+            st.session_state.brush_log = []
             st.rerun()
 
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
@@ -952,25 +958,6 @@ if st.session_state.results:
   <div class="card-content">{formatted}</div>
 </div>""", unsafe_allow_html=True)
 
-        # 指示欄 + 再生成ボタン
-        st.markdown(f'<div class="refine-label" style="color:{color};">✏️ この出力に指示して再生成</div>', unsafe_allow_html=True)
-        r_col1, r_col2 = st.columns([5, 1])
-        with r_col1:
-            instruction = st.text_input(
-                label=f"instruction_{name}",
-                placeholder="例）もっと日常的な言葉で言い換えて / 女性が40代で経験しやすい内容に絞って",
-                key=f"refine_input_{name}",
-                label_visibility="collapsed",
-            )
-        with r_col2:
-            if st.button("再生成", key=f"refine_btn_{name}", use_container_width=True):
-                if instruction.strip():
-                    with st.spinner(f"{name} が修正中..."):
-                        new_content = run_single_refine(name, data["content"], instruction.strip())
-                        st.session_state.results[name]["content"] = new_content
-                    st.rerun()
-                else:
-                    st.warning("指示を入力してください。")
 
     # 1行目：Claude（左）・ChatGPT（右）
     row1_L, row1_R = st.columns(2, gap="medium")
@@ -985,6 +972,52 @@ if st.session_state.results:
         render_card("Gemini")
     with row2_R:
         render_card("Grok")
+
+    # ── ③ ブラッシュアップ会話エリア ──
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">全AIへの指示 — ブラッシュアップ</div>', unsafe_allow_html=True)
+
+    # 指示履歴を表示
+    if st.session_state.brush_log:
+        for entry in st.session_state.brush_log:
+            st.markdown(f"""
+<div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
+  <div style="background:#1e1e38; border-radius:20px 20px 4px 20px; padding:10px 16px;
+       font-size:13px; color:#e2e8f0; max-width:80%;">
+    {html_module.escape(entry)}
+  </div>
+</div>""", unsafe_allow_html=True)
+
+    # 入力欄
+    b_col1, b_col2 = st.columns([5, 1])
+    with b_col1:
+        brush_input = st.text_input(
+            "brush",
+            placeholder="例）40代女性がより共感しやすい方向に絞って / 例えをもっとわかりやすく / 腸以外の視点で出して",
+            label_visibility="collapsed",
+            key="brush_input_field",
+        )
+    with b_col2:
+        brush_clicked = st.button("全AI指示 →", use_container_width=True, key="brush_btn")
+
+    if brush_clicked:
+        if brush_input.strip():
+            with st.spinner("全AIが指示に従って再生成中..."):
+                new_results = run_all_brush_up(st.session_state.results, brush_input.strip())
+                new_judge_claude, new_judge_chatgpt = "", ""
+                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+                    f1 = ex.submit(run_judge_claude, new_results)
+                    f2 = ex.submit(run_judge_chatgpt, new_results)
+                    new_judge_claude  = f1.result()
+                    new_judge_chatgpt = f2.result()
+            st.session_state.results       = new_results
+            st.session_state.judge_claude  = new_judge_claude
+            st.session_state.judge_chatgpt = new_judge_chatgpt
+            st.session_state.brush_log.append(brush_input.strip())
+            st.rerun()
+        else:
+            st.warning("指示を入力してください。")
 
 else:
     st.markdown(
