@@ -25,9 +25,8 @@ html, body,
     background: #ffffff !important;
 }
 [data-testid="stHeader"] { background: #ffffff !important; border-bottom: 1px solid #e5e7eb; }
-[data-testid="stSidebar"]        { background: #171717 !important; }
-[data-testid="stSidebarContent"] { background: #171717 !important; }
-[data-testid="stSidebarNav"] a, [data-testid="stSidebarNav"] span { color: #d1d5db !important; }
+[data-testid="stSidebar"]        { background: #f9fafb !important; }
+[data-testid="stSidebarContent"] { background: #f9fafb !important; }
 
 .block-container {
     max-width: 760px !important;
@@ -46,17 +45,16 @@ html, body,
 [data-testid="stMain"] h2,
 [data-testid="stMain"] h3 { color: #111827 !important; }
 
-/* ── サイドバーのテキスト（白） ── */
+/* ── サイドバーのテキスト（黒） ── */
 [data-testid="stSidebar"] *,
 [data-testid="stSidebarContent"] *,
-[data-testid="stSidebarNav"] *,
-[data-testid="stSidebarNav"] a,
-[data-testid="stSidebarNav"] span,
-[data-testid="stSidebarNav"] p {
-    color: #d1d5db !important;
+[data-testid="stSidebarNav"] * {
+    color: #374151 !important;
 }
-[data-testid="stSidebarNav"] [aria-selected="true"] span {
-    color: #ffffff !important;
+[data-testid="stSidebarNav"] [aria-selected="true"],
+[data-testid="stSidebarNav"] [aria-selected="true"] * {
+    color: #111827 !important;
+    font-weight: 600 !important;
 }
 
 /* ── チャットメッセージ全体 ── */
