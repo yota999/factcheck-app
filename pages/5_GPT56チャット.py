@@ -36,9 +36,28 @@ html, body,
     background: #ffffff !important;
 }
 
-/* ── 全テキスト ── */
-*, p, span, div, label, li { color: #111827 !important; }
-h1, h2, h3 { color: #111827 !important; font-weight: 600 !important; }
+/* ── メインエリアのテキスト（黒） ── */
+[data-testid="stMain"] p,
+[data-testid="stMain"] span,
+[data-testid="stMain"] div,
+[data-testid="stMain"] label,
+[data-testid="stMain"] li,
+[data-testid="stMain"] h1,
+[data-testid="stMain"] h2,
+[data-testid="stMain"] h3 { color: #111827 !important; }
+
+/* ── サイドバーのテキスト（白） ── */
+[data-testid="stSidebar"] *,
+[data-testid="stSidebarContent"] *,
+[data-testid="stSidebarNav"] *,
+[data-testid="stSidebarNav"] a,
+[data-testid="stSidebarNav"] span,
+[data-testid="stSidebarNav"] p {
+    color: #d1d5db !important;
+}
+[data-testid="stSidebarNav"] [aria-selected="true"] span {
+    color: #ffffff !important;
+}
 
 /* ── チャットメッセージ全体 ── */
 [data-testid="stChatMessage"] {
