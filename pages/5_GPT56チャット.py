@@ -215,20 +215,21 @@ hr { border-color: #f3f4f6 !important; margin: 8px 0 !important; }
 if "messages"     not in st.session_state: st.session_state.messages     = []
 if "total_tokens" not in st.session_state: st.session_state.total_tokens = {"input": 0, "output": 0}
 
-# ── ヘッダー ──
-col_title, col_reset = st.columns([5, 1])
-with col_title:
-    st.markdown("""
-<div class="chat-title">
-  💬 GPT-5.6 Luna
-  <span class="model-tag">gpt-5.6-luna</span>
-</div>
-""", unsafe_allow_html=True)
-with col_reset:
-    if st.button("リセット", use_container_width=True):
+# ── サイドバー：リセットボタン ──
+with st.sidebar:
+    st.markdown("---")
+    if st.button("🔄 会話をリセット", use_container_width=True):
         st.session_state.messages     = []
         st.session_state.total_tokens = {"input": 0, "output": 0}
         st.rerun()
+
+# ── ヘッダー ──
+st.markdown("""
+<div style="display:flex;align-items:center;gap:10px;padding:4px 0 12px;">
+  <span class="chat-title">💬 GPT-5.6 Luna</span>
+  <span class="model-tag">gpt-5.6-luna</span>
+</div>
+""", unsafe_allow_html=True)
 
 # ── コスト表示 ──
 ti = st.session_state.total_tokens["input"]
