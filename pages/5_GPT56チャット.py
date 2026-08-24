@@ -225,9 +225,8 @@ with st.sidebar:
 
 # ── ヘッダー ──
 st.markdown("""
-<div style="display:flex;align-items:center;gap:10px;padding:4px 0 12px;">
+<div style="padding:4px 0 12px;">
   <span class="chat-title">💬 GPT-5.6 Luna</span>
-  <span class="model-tag">gpt-5.6-luna</span>
 </div>
 """, unsafe_allow_html=True)
 
