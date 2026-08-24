@@ -13,14 +13,32 @@ st.markdown("""
 
 *, *::before, *::after { font-family: 'Inter', sans-serif !important; box-sizing: border-box; }
 
-/* 背景 */
+/* 背景 — 全要素をダークに統一 */
+html, body,
+[data-testid="stApp"],
 [data-testid="stAppViewContainer"],
-[data-testid="stApp"] {
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+[data-testid="stVerticalBlockBorderWrapper"],
+section[data-testid="stSidebar"],
+.main {
     background: #0d0d1a !important;
 }
 [data-testid="stHeader"]           { background: transparent !important; }
 [data-testid="stSidebar"]          { background: #080810 !important; }
 [data-testid="stSidebarContent"]   { background: #080810 !important; }
+
+/* チャット入力欄まわりの白背景を消す */
+[data-testid="stBottom"],
+[data-testid="stBottomBlockContainer"],
+[data-testid="stBottomBlockContainer"] > div,
+[data-testid="stChatInput"],
+[data-testid="stChatInput"] > div,
+[data-testid="stChatInput"] > div > div {
+    background: #0d0d1a !important;
+    border-top: 1px solid #1a1a2e !important;
+}
+
 .block-container {
     max-width: 720px !important;
     padding: 1.5rem 1rem 6rem !important;
@@ -99,14 +117,20 @@ st.markdown("""
 }
 
 /* リセットボタン */
-div[data-testid="stButton"] > button[kind="secondary"] {
+div[data-testid="stButton"] > button {
     background: rgba(255,255,255,0.05) !important;
     color: #6b7280 !important;
-    border: 1px solid #1f2937 !important;
+    border: 1px solid #2d2d4e !important;
     border-radius: 8px !important;
-    font-size: 13px !important;
-    padding: 6px 16px !important;
+    font-size: 12px !important;
+    padding: 5px 14px !important;
+    min-height: 32px !important;
     width: 100% !important;
+    box-shadow: none !important;
+}
+div[data-testid="stButton"] > button:hover {
+    background: rgba(255,255,255,0.09) !important;
+    color: #9ca3af !important;
 }
 
 /* 区切り線 */
