@@ -310,9 +310,21 @@ div[data-testid="stButton"] > button[kind="secondary"] {
     color: #4b5563; font-size: 14px; letter-spacing: 0.05em;
 }
 h1, h2, h3, p, label { color: #e2e8f0 !important; }
-[data-testid="stMarkdownContainer"] p { color: #94a3b8 !important; }
-[data-testid="stMarkdownContainer"] { color: #e2e8f0 !important; }
+[data-testid="stMarkdownContainer"] p  { color: #e2e8f0 !important; }
+[data-testid="stMarkdownContainer"] li { color: #e2e8f0 !important; }
+[data-testid="stMarkdownContainer"]    { color: #e2e8f0 !important; }
 span, div { color: inherit; }
+
+/* スマホ対応 */
+@media (max-width: 768px) {
+    .block-container { padding: 1rem 0.5rem 4rem !important; }
+    [data-testid="column"] {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+    }
+    div[data-testid="stButton"] > button { min-height: 48px !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 

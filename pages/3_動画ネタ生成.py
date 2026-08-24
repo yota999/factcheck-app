@@ -940,7 +940,34 @@ div[data-testid="stButton"] > button:not([kind]):hover {
 .section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #374151; margin-bottom: 10px; }
 
 h1, h2, h3, p, label { color: #e2e8f0 !important; }
-[data-testid="stMarkdownContainer"] p { color: #6b7280 !important; }
+[data-testid="stMarkdownContainer"] p { color: #e2e8f0 !important; }
+[data-testid="stMarkdownContainer"] li { color: #e2e8f0 !important; }
+
+/* スマホ対応 */
+@media (max-width: 768px) {
+    .block-container { padding: 1rem 0.5rem 4rem !important; }
+    /* 2カラムを1カラムに */
+    [data-testid="column"] {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+    }
+    /* ボタンを大きく */
+    div[data-testid="stButton"] > button {
+        min-height: 48px !important;
+        font-size: 15px !important;
+    }
+    /* カードのパディング調整 */
+    .idea-card { padding: 18px 16px !important; }
+    .judge-section { padding: 18px 16px !important; }
+    /* タブ文字を小さく */
+    [data-testid="stTabs"] button[role="tab"] {
+        font-size: 12px !important;
+        padding: 8px 12px !important;
+    }
+    /* ページタイトル */
+    .page-title { font-size: 22px !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
