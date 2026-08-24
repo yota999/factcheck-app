@@ -9,198 +9,187 @@ st.set_page_config(page_title="GPT-5.6 Luna", page_icon="💬", layout="centered
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
 
-*, *::before, *::after { font-family: 'Inter', sans-serif !important; box-sizing: border-box; }
+*, *::before, *::after {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    box-sizing: border-box;
+}
 
-/* 背景 — 全要素をダークに統一 */
+/* ── 背景・全体 ── */
 html, body,
 [data-testid="stApp"],
 [data-testid="stAppViewContainer"],
 [data-testid="stMain"],
-[data-testid="stMainBlockContainer"],
-[data-testid="stVerticalBlockBorderWrapper"],
-section[data-testid="stSidebar"],
-.main {
-    background: #0d0d1a !important;
+[data-testid="stMainBlockContainer"] {
+    background: #ffffff !important;
 }
-[data-testid="stHeader"]           { background: transparent !important; }
-[data-testid="stSidebar"]          { background: #080810 !important; }
-[data-testid="stSidebarContent"]   { background: #080810 !important; }
-
-/* チャット入力欄まわりの白背景を消す */
-[data-testid="stBottom"],
-[data-testid="stBottomBlockContainer"],
-[data-testid="stBottomBlockContainer"] > div,
-[data-testid="stChatInput"],
-[data-testid="stChatInput"] > div,
-[data-testid="stChatInput"] > div > div {
-    background: #0d0d1a !important;
-    border-top: 1px solid #1a1a2e !important;
-}
+[data-testid="stHeader"] { background: #ffffff !important; border-bottom: 1px solid #e5e7eb; }
+[data-testid="stSidebar"]        { background: #171717 !important; }
+[data-testid="stSidebarContent"] { background: #171717 !important; }
+[data-testid="stSidebarNav"] a, [data-testid="stSidebarNav"] span { color: #d1d5db !important; }
 
 .block-container {
-    max-width: 720px !important;
-    padding: 1.5rem 1rem 6rem !important;
+    max-width: 760px !important;
+    padding: 1rem 1.5rem 7rem !important;
     margin: 0 auto !important;
+    background: #ffffff !important;
 }
 
-/* 全テキストを白に統一 */
-*, p, span, div, label, h1, h2, h3, h4, li {
-    color: #e2e8f0 !important;
-}
+/* ── 全テキスト ── */
+*, p, span, div, label, li { color: #111827 !important; }
+h1, h2, h3 { color: #111827 !important; font-weight: 600 !important; }
 
-/* チャットメッセージ全体 */
+/* ── チャットメッセージ全体 ── */
 [data-testid="stChatMessage"] {
     background: transparent !important;
     border: none !important;
-    padding: 4px 0 !important;
-    gap: 10px !important;
+    padding: 8px 0 !important;
+    gap: 12px !important;
+    align-items: flex-start !important;
 }
 
-/* ユーザーバブル */
-[data-testid="stChatMessage"][data-testid*="user"] [data-testid="stMarkdownContainer"],
-[data-testid="stChatMessage"]:has([aria-label="user avatar"]) [data-testid="stMarkdownContainer"] {
-    background: #1e1b4b !important;
+/* アバター非表示（スッキリさせる） */
+[data-testid="stChatMessage"] [data-testid="chatAvatarIcon-user"],
+[data-testid="stChatMessage"] [data-testid="chatAvatarIcon-assistant"] {
+    display: none !important;
+}
+
+/* ユーザーメッセージ */
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) [data-testid="stMarkdownContainer"],
+[data-testid="stChatMessage"]:has([aria-label="user avatar"])            [data-testid="stMarkdownContainer"] {
+    background: #ede9fe !important;
     border-radius: 18px 18px 4px 18px !important;
     padding: 12px 16px !important;
+    margin-left: auto !important;
+    max-width: 80% !important;
+    display: block !important;
 }
 
-/* アシスタントバブル */
-[data-testid="stChatMessage"]:has([aria-label="assistant avatar"]) [data-testid="stMarkdownContainer"] {
-    background: #0f2027 !important;
-    border-radius: 18px 18px 18px 4px !important;
-    padding: 12px 16px !important;
+/* アシスタントメッセージ（バブルなし・プレーン） */
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) [data-testid="stMarkdownContainer"],
+[data-testid="stChatMessage"]:has([aria-label="assistant avatar"])            [data-testid="stMarkdownContainer"] {
+    background: transparent !important;
+    padding: 4px 0 !important;
+    max-width: 100% !important;
 }
 
 /* マークダウン内テキスト */
 [data-testid="stMarkdownContainer"] p,
 [data-testid="stMarkdownContainer"] li,
-[data-testid="stMarkdownContainer"] span {
-    color: #e2e8f0 !important;
-    line-height: 1.75 !important;
+[data-testid="stMarkdownContainer"] span,
+[data-testid="stMarkdownContainer"] strong {
+    color: #111827 !important;
     font-size: 15px !important;
+    line-height: 1.75 !important;
 }
+[data-testid="stMarkdownContainer"] strong { font-weight: 600 !important; }
 
-/* アバターアイコン */
-[data-testid="stChatMessage"] img,
-[data-testid="stChatMessage"] svg {
-    border-radius: 50% !important;
+/* ── 入力欄 ── */
+[data-testid="stBottom"],
+[data-testid="stBottomBlockContainer"],
+[data-testid="stBottomBlockContainer"] > div {
+    background: #ffffff !important;
+    border-top: 1px solid #e5e7eb !important;
 }
-
-/* 入力欄 */
 [data-testid="stChatInput"] {
-    background: #13131f !important;
-    border-top: 1px solid #1e1e38 !important;
+    background: #ffffff !important;
+}
+[data-testid="stChatInput"] > div,
+[data-testid="stChatInput"] > div > div {
+    background: #f9fafb !important;
+    border-radius: 14px !important;
+    border: 1px solid #d1d5db !important;
 }
 [data-testid="stChatInput"] textarea {
-    background: #1a1a2e !important;
-    color: #e2e8f0 !important;
-    border: 1px solid #2d2d50 !important;
-    border-radius: 14px !important;
+    background: transparent !important;
+    color: #111827 !important;
     font-size: 15px !important;
     padding: 12px 16px !important;
-    caret-color: #a78bfa !important;
+    caret-color: #6d28d9 !important;
 }
-[data-testid="stChatInput"] textarea::placeholder { color: #4b5563 !important; }
+[data-testid="stChatInput"] textarea::placeholder { color: #9ca3af !important; }
 [data-testid="stChatInput"] textarea:focus {
-    border-color: #4f46e5 !important;
     outline: none !important;
-    box-shadow: 0 0 0 3px rgba(79,70,229,0.2) !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
 }
-
-/* 送信ボタン */
 [data-testid="stChatInput"] button {
-    background: #4f46e5 !important;
+    background: #6d28d9 !important;
     border-radius: 10px !important;
     color: white !important;
 }
 
-/* リセットボタン */
+/* ── ボタン ── */
 div[data-testid="stButton"] > button {
-    background: rgba(255,255,255,0.05) !important;
+    background: #f3f4f6 !important;
     color: #6b7280 !important;
-    border: 1px solid #2d2d4e !important;
+    border: 1px solid #e5e7eb !important;
     border-radius: 8px !important;
-    font-size: 12px !important;
-    padding: 5px 14px !important;
-    min-height: 32px !important;
-    width: 100% !important;
+    font-size: 13px !important;
+    padding: 5px 16px !important;
     box-shadow: none !important;
+    min-height: 34px !important;
 }
 div[data-testid="stButton"] > button:hover {
-    background: rgba(255,255,255,0.09) !important;
-    color: #9ca3af !important;
+    background: #e5e7eb !important;
+    color: #374151 !important;
 }
 
-/* 区切り線 */
-hr { border-color: #1e1e38 !important; margin: 12px 0 !important; }
+/* ── 区切り線 ── */
+hr { border-color: #f3f4f6 !important; margin: 8px 0 !important; }
 
-/* コストバッジ */
+/* ── コストバー ── */
 .cost-bar {
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 8px 14px;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid #1e1e38;
+    padding: 7px 14px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
     border-radius: 10px;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
     flex-wrap: wrap;
 }
-.cost-item {
-    font-size: 12px;
-    color: #6b7280 !important;
-}
-.cost-item span {
-    color: #a78bfa !important;
-    font-weight: 600;
-}
+.cost-item { font-size: 12px; color: #9ca3af !important; }
+.cost-item span { color: #6d28d9 !important; font-weight: 600; }
 
-/* スピナー */
-[data-testid="stSpinner"] { color: #a78bfa !important; }
-
-/* ヘッダーエリア */
-.chat-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 4px;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-.chat-title {
-    font-size: 22px;
-    font-weight: 700;
-    background: linear-gradient(135deg, #e2d9f3, #a78bfa);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
+/* ── モデルタグ ── */
 .model-tag {
     font-size: 11px;
-    color: #4b5563 !important;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid #1e1e38;
+    color: #9ca3af !important;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
     border-radius: 20px;
     padding: 3px 12px;
+    display: inline-block;
+    margin-bottom: 2px;
 }
 
-/* 空状態 */
+/* ── タイトル ── */
+.chat-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #111827 !important;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ── 空状態 ── */
 .empty-chat {
     text-align: center;
-    padding: 60px 0 40px;
-    color: #1f2937 !important;
+    padding: 80px 0 40px;
 }
-.empty-icon { font-size: 48px; margin-bottom: 12px; }
-.empty-text { font-size: 14px; color: #374151 !important; }
+.empty-icon { font-size: 40px; margin-bottom: 10px; }
+.empty-text { font-size: 14px; color: #9ca3af !important; }
+.empty-hint { font-size: 12px; color: #d1d5db !important; margin-top: 6px; }
 
-/* スマホ対応 */
+/* ── スマホ対応 ── */
 @media (max-width: 640px) {
-    .block-container { padding: 1rem 0.5rem 5rem !important; }
+    .block-container { padding: 0.75rem 1rem 6rem !important; }
     [data-testid="stMarkdownContainer"] p { font-size: 14px !important; }
-    .chat-title { font-size: 18px !important; }
-    .cost-item  { font-size: 11px !important; }
+    .chat-title { font-size: 17px !important; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -210,21 +199,19 @@ if "messages"     not in st.session_state: st.session_state.messages     = []
 if "total_tokens" not in st.session_state: st.session_state.total_tokens = {"input": 0, "output": 0}
 
 # ── ヘッダー ──
-col_title, col_reset = st.columns([4, 1])
+col_title, col_reset = st.columns([5, 1])
 with col_title:
     st.markdown("""
-<div class="chat-header">
-  <div class="chat-title">💬 GPT-5.6 Luna</div>
-  <div class="model-tag">gpt-5.6-luna</div>
+<div class="chat-title">
+  💬 GPT-5.6 Luna
+  <span class="model-tag">gpt-5.6-luna</span>
 </div>
 """, unsafe_allow_html=True)
 with col_reset:
-    st.markdown("<div style='padding-top:6px'>", unsafe_allow_html=True)
-    if st.button("リセット", type="secondary", use_container_width=True):
+    if st.button("リセット", use_container_width=True):
         st.session_state.messages     = []
         st.session_state.total_tokens = {"input": 0, "output": 0}
         st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
 
 # ── コスト表示 ──
 ti = st.session_state.total_tokens["input"]
@@ -246,7 +233,8 @@ if not st.session_state.messages:
     st.markdown("""
 <div class="empty-chat">
   <div class="empty-icon">💬</div>
-  <div class="empty-text">GPT-5.6 Luna にメッセージを送ってみてください</div>
+  <div class="empty-text">GPT-5.6 Luna に何でも聞いてみてください</div>
+  <div class="empty-hint">台本のブラッシュアップ・質問・相談など</div>
 </div>
 """, unsafe_allow_html=True)
 else:
@@ -262,7 +250,7 @@ if prompt := st.chat_input("メッセージを入力..."):
 
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     with st.chat_message("assistant"):
-        with st.spinner("生成中..."):
+        with st.spinner(""):
             res = client.chat.completions.create(
                 model="gpt-5.6-luna",
                 messages=st.session_state.messages,
